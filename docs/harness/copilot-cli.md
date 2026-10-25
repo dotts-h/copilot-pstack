@@ -2,7 +2,7 @@
 
 pstack skills use Cursor names. In Copilot CLI, read this file once per session, then map each Cursor name with the tables. `<pstack>` means the folder that holds `skills/` and `docs/`. If a Cursor field has no row, drop it and say so. Never pass a field the tool schema rejects.
 
-Each fact about Copilot names its source. Measured means read from the Linux x64 package of Copilot CLI 1.0.98, or seen in a 1.0.98 session on the build machine. Docs means the linked page, fetched 25 October 2026 unless the sentence gives another date. The operator's report means the operator saw it on their own machine, and this file did not re-run it. The 1.0.103 work run is one of those reports.
+Each fact about Copilot names its source. Measured means read from the Linux x64 package of Copilot CLI 1.0.98, or seen in a 1.0.98 session on the build machine. Docs means the linked page, fetched 25 October 2026 unless the sentence or its section gives another date. The operator's report means the operator saw it on their own machine, and this file did not re-run it. The 1.0.103 work run is one of those reports.
 
 ## Tools
 
@@ -31,15 +31,37 @@ Each fact about Copilot names its source. Measured means read from the Linux x64
 
 ## Models
 
+Docs fetched 26 October 2026.
+
+The operator named the only models this Copilot install uses: Claude Sonnet 5.5, GPT-6.1 Sol, GPT-6 Luna, and Gemini 4. Never pass a `claude-opus` slug or a Grok slug. Only the two arena rows below pass `max`. Every other role runs at `xhigh` or lower, so when a skill says to raise effort up to `max`, stop at `xhigh`.
+
+Start the session with `copilot --agent poteto-mode --model gpt-6.1-sol --reasoning-effort xhigh`. Do not run the session on Auto. The `poteto-mode` profile also sets `model: gpt-6.1-sol` and `reasoningEffort: xhigh`. The command reference lists both fields in its custom agent frontmatter table, documented at https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference.
+
+Pass `model` and `reasoning_effort` from the table below on every `task` call, built-in agents included. A built-in agent called without `model` runs on its own default, and those defaults are outside the operator's list. The 1.0.98 `explore` definition lists `gpt-5.6-luna`, then `gpt-5.4-mini`, with `reasoningEffort: low`, measured in the package's `definitions/explore.agent.yaml`. The command reference lists `claude-sonnet-4.6` as the `general-purpose` default and ranks an explicit per-call value above every other source of model and effort.
+
+| Role | Model | Reasoning effort |
+| --- | --- | --- |
+| Session agent and orchestrator | `gpt-6.1-sol` | `xhigh` |
+| `hardest tasks` | `gpt-6.1-sol` | `xhigh` |
+| `interrogate reviewers` | `gpt-6.1-sol` and the slug the task tool shows for Gemini 4 Argon. If the tool shows no Gemini 4 slug, the second reviewer runs on `claude-sonnet-5.5`, and the verdict says so. | `xhigh` or lower |
+| `arena runners` | One runner on `gpt-6.1-sol` and one on `claude-sonnet-5.5`. Extra runners reuse one of these two slugs. | `max` |
+| `arena cross-judge pool` | `gpt-6.1-sol` and `claude-sonnet-5.5`. Pick the one whose family differs from the parent's, so a `gpt-6.1-sol` parent gets `claude-sonnet-5.5`. | `max` |
+| Any other role the skills assign to Opus | `claude-sonnet-5.5` | `xhigh` or lower |
+| Any other role the skills assign to Grok | `gpt-6-luna` | `xhigh` or lower |
+
+The supported-models table at https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#supported-models lists `claude-sonnet-5.5`, `gpt-6.1-sol`, and `gpt-6-luna`. Its only Gemini slug is `gemini-3.8-flash`. The display name Gemini 4 Argon is documented at https://docs.github.com/en/copilot/reference/ai-models/supported-models. Do not guess a Gemini slug. The command reference lists `max` as a `--reasoning-effort` value and calls it the highest-depth tier for Anthropic models. The operator named `max` for both arena models anyway. If the task tool rejects `max` on `gpt-6.1-sol`, say so and run that runner at `xhigh`.
+
+If the task tool rejects a slug from the table, run that role on another model from the operator's list. Name the rejected slug and the slug that ran. Do not fall back to a skill's default model, because those defaults are Opus and Grok.
+
 | Cursor | Copilot CLI |
 | --- | --- |
-| `model` on `task` | Pass `model` only when the task tool accepts that slug. The operator reported Claude, GPT, and Gemini models in their Copilot `task` tool. The 1.0.103 work run reported no Grok entry in the task model list. If the tool rejects the slug, omit `model` and say so. |
-| Reasoning budget | The 1.0.103 work run reported `reasoning_effort` and `context_tier` as task fields. Pass `reasoning_effort` for the role budget when the tool accepts it. |
+| `model` on `task` | Pass a slug the task tool accepts. The operator reported Claude, GPT, and Gemini models in their Copilot `task` tool. The 1.0.103 work run reported no Grok entry in the task model list. |
+| Reasoning budget | The 1.0.103 work run reported `reasoning_effort` and `context_tier` as task fields. Pass `reasoning_effort` from the role table when the tool accepts it. |
 | `/subagents` | The 1.0.103 work run reported per-agent model preferences. Those preferences can override an omitted `model`. Omitting `model` does not prove the child uses the session model. |
 | Session model is Auto | If the session model is Auto, subagents ignore the `model` field on a profile, documented at https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference. |
-| `auto` or `inherit-parent` | Omit `model`. |
-| Two model families | Run `interrogate` with its reviewers on two different families that the task tool accepts. When the tool rejects Grok, pair Claude with either GPT or Gemini. In the verdict's Reviewers section, name the slug each reviewer ran on. If the tool accepts only one family, run every reviewer on that family and say that their agreement is weaker evidence than agreement across families. |
-| `~/.cursor/rules/pstack-models.mdc` | There is no file the CLI loads in place of `~/.cursor/rules/pstack-models.mdc`. Do not write that Cursor path from a Copilot session. A named session model does not assign roles. |
+| `auto` or `inherit-parent` | Pass `gpt-6.1-sol` at `xhigh`, the session's model and effort. Do not omit `model`. |
+| Two model families | Run `interrogate` on the `interrogate reviewers` row above. In the verdict's Reviewers section, name the slug each reviewer ran on. If the tool accepts only one family, run every reviewer on that family and say that their agreement is weaker evidence than agreement across families. |
+| `~/.cursor/rules/pstack-models.mdc` | There is no file the CLI loads in place of `~/.cursor/rules/pstack-models.mdc`. Do not write that Cursor path from a Copilot session. A named session model does not assign roles. The role table above does. |
 
 ## setup-pstack
 
@@ -63,7 +85,7 @@ For a missing convenience, write `Skipped in Copilot CLI: <step>. <reason>.`, th
 | Cursor Automations, `make-bot-ui`, and the automations pack | Skip. This repo does not ship `automations/`. |
 | Bugbot startup, waits, and configuration | Skip. Existing Bugbot comments are ordinary review threads. Use the forge command from the forge table. That is not a skip. On GitHub, Copilot code review is requested on the pull request, documented at https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-code-review. `/review` runs the CLI's built-in code-review agent on local changes, documented at https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/agentic-code-review. Neither page describes a review of a GitLab merge request. |
 | Cursor cloud agents and the Cursor dashboard | The worktree row covers `environment` cloud. Skip a step that needs the Cursor cloud machine. |
-| Custom Mode | Start the session with `copilot --agent poteto-mode`, or pick `poteto-mode` with `/agent` in an interactive session. Either one selects `com.github.copilot/agents/poteto-mode.agent.md` as the session agent, documented at https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli. A plugin agent's ID is its file name without `.agent.md`, documented at https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference. Pass the flag again for each new session. `poteto-agent` stays the child profile for playbook delegates. |
+| Custom Mode | Start the session with `copilot --agent poteto-mode --model gpt-6.1-sol --reasoning-effort xhigh`, or pick `poteto-mode` with `/agent` in an interactive session. Either one selects `com.github.copilot/agents/poteto-mode.agent.md` as the session agent, documented at https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli. A plugin agent's ID is its file name without `.agent.md`, documented at https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference. Pass the flags again for each new session. `poteto-agent` stays the child profile for playbook delegates. |
 | `/loop` | In CLI 1.0.98, `/loop` is an alias of the experimental `/every` command, measured in the 1.0.98 `cli-main.js` and documented at https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/schedule-prompts. That page says experiments need `/experimental on` or `--experimental`. The page also says a schedule fires only while the interactive session that created it is running, and `--resume` restores the schedule. Writing `/loop` in a plan file does not arm a timer. If the session cannot arm `/loop`, a shipping gate that needs supervision stays blocked. `skills/poteto-mode/scripts/check-plan.mjs` fails a plan whose `## Program checklist` section lacks `/loop 1h`, so keep that phrase in plans. |
 | `cursor-team-kit` skills `/deslop`, `control-ui`, and `control-cli` | Skip. They are not in this package. |
 | `/create-skill` and `/add-plugin` | Write `SKILL.md` directly. Install with `copilot plugin install`. Not a skip. |

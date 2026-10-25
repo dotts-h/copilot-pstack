@@ -44,7 +44,7 @@ two steps in cursor and claude code:
 1. run [`/setup-pstack`](./skills/setup-pstack/SKILL.md), pick a reasoning budget, and choose which models you want.
 2. use [`/poteto-mode`](./skills/poteto-mode/SKILL.md) whenever you're doing anything that requires rigor.
 
-in copilot cli, skip `/setup-pstack` and read the [copilot cli adapter](./docs/harness/copilot-cli.md) instead. it says how to pass models to subagents and how to start the `poteto-mode` session agent.
+in copilot cli, skip `/setup-pstack` and read the [copilot cli adapter](./docs/harness/copilot-cli.md) instead. it says how to pass models to subagents and how to start the `poteto-mode` session agent. it limits copilot cli to claude sonnet 5.5, gpt-6.1 sol, gpt-6 luna, and gemini 4, and caps reasoning effort at `xhigh` everywhere except arena, which runs at `max`.
 
 new here? the [pstack guide](./docs/guide/README.md) walks you through a first real task, from setup and prompting through verification and overnight runs. stuck, or unsure which skill fits? ask [`/poteto-help`](./skills/poteto-help/SKILL.md).
 

@@ -24,7 +24,7 @@ In Cursor and Claude Code, run:
 /setup-pstack
 ```
 
-In Copilot CLI, skip `/setup-pstack` and read the [Copilot CLI adapter](../harness/copilot-cli.md) instead. The adapter says how a Copilot session passes models to subagents.
+In Copilot CLI, skip `/setup-pstack` and read the [Copilot CLI adapter](../harness/copilot-cli.md) instead. The adapter says how a Copilot session passes models to subagents. It limits Copilot CLI to Claude Sonnet 5.5, GPT-6.1 Sol, GPT-6 Luna, and Gemini 4, and caps reasoning effort at `xhigh` everywhere except arena, which runs at `max`.
 
 [`/setup-pstack`](../../skills/setup-pstack/SKILL.md) detects the models you have access to, asks for a reasoning budget, shows you each role (code delegates, judgment, the review panels), and asks what you want. Answer the questions. It writes `~/.cursor/rules/pstack-models.mdc`, a small rule every pstack skill reads.
 
@@ -67,6 +67,6 @@ Watch the todo list. Its first items are the matched playbook's steps copied in,
 
 From here you can type normal follow-ups. To keep `/poteto-mode` on for the whole chat, pick it from the `/` menu with Option+Enter (Mac) or Alt+Enter (Windows) instead of Enter. That makes it a [Custom Mode](https://cursor.com/docs/skills#using-a-skill-as-a-custom-mode), which stays in context on every turn until you exit it. Custom Modes are available in the Agents Window and the CLI. Plain Enter attaches the skill to one message, and it fades as the chat moves on.
 
-In Copilot CLI, start the session with `copilot --agent poteto-mode`. That flag selects the `poteto-mode` profile for the whole session, documented in [GitHub's custom agent how-to](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli). Pass the flag again for each new session.
+In Copilot CLI, start the session with `copilot --agent poteto-mode --model gpt-6.1-sol --reasoning-effort xhigh`. The `--agent` flag selects the `poteto-mode` profile for the whole session, documented in [GitHub's custom agent how-to](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli). `--model` and `--reasoning-effort` are documented in the [Copilot CLI command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference). Pass the flags again for each new session.
 
 Next: [Route work through `/poteto-mode`](./02-poteto-mode.md).
