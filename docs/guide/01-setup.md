@@ -14,15 +14,17 @@ Cursor confirms the plugin is installed.
 
 In Claude Code, run `/plugin marketplace add cursor/plugins`, then `/plugin install pstack@cursor-plugins`. Claude Code prefixes plugin commands, so each command in this guide takes a `pstack:` prefix there, such as `/pstack:setup-pstack`, which writes its model rule to `~/.claude/rules/pstack-models.md`. The [Claude Code adapter](../harness/claude-code.md) covers the other differences.
 
-This repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the MIT license. The skills stay in Cursor wording. In Copilot CLI, mount this folder for one session with `copilot --plugin-dir <folder>`. That flag was measured on Copilot CLI 1.0.98. A lasting install is `copilot plugin install <owner/repo>`. The [Copilot CLI adapter](../harness/copilot-cli.md) maps Cursor names. A remote whose URL contains `gitlab` uses `glab mr`. A GitHub remote uses `gh pr`. The menu may show `pstack:poteto-mode`. If that lookup misses, read `skills/poteto-mode/SKILL.md`.
+This repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the MIT license. The skills stay in Cursor wording. In Copilot CLI, mount this folder for one session with `copilot --plugin-dir <folder>`. That flag was measured on Copilot CLI 1.0.98. A lasting install is `copilot plugin install <owner/repo>`, documented in the [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference). The [Copilot CLI adapter](../harness/copilot-cli.md) maps Cursor names. A remote whose host contains `gitlab` uses `glab mr`. Any other host uses `gh pr`. If `pstack:poteto-mode` is not found, read `skills/poteto-mode/SKILL.md`.
 
 ## Pick your models
 
-Run:
+In Cursor and Claude Code, run:
 
 ```text
 /setup-pstack
 ```
+
+In Copilot CLI, skip `/setup-pstack` and read the [Copilot CLI adapter](../harness/copilot-cli.md) instead. The adapter says how a Copilot session passes models to subagents.
 
 [`/setup-pstack`](../../skills/setup-pstack/SKILL.md) detects the models you have access to, asks for a reasoning budget, shows you each role (code delegates, judgment, the review panels), and asks what you want. Answer the questions. It writes `~/.cursor/rules/pstack-models.mdc`, a small rule every pstack skill reads.
 
@@ -64,5 +66,7 @@ Pick something real but small, and describe it the way you'd describe it to a co
 Watch the todo list. Its first items are the matched playbook's steps copied in, the Feature playbook for this prompt. If `/poteto-mode` skips a step, the step stays in the list with `skip: <reason>`, so you can see what it chose not to do.
 
 From here you can type normal follow-ups. To keep `/poteto-mode` on for the whole chat, pick it from the `/` menu with Option+Enter (Mac) or Alt+Enter (Windows) instead of Enter. That makes it a [Custom Mode](https://cursor.com/docs/skills#using-a-skill-as-a-custom-mode), which stays in context on every turn until you exit it. Custom Modes are available in the Agents Window and the CLI. Plain Enter attaches the skill to one message, and it fades as the chat moves on.
+
+In Copilot CLI, start the session with `copilot --agent poteto-mode`. That flag selects the `poteto-mode` profile for the whole session, documented in [GitHub's custom agent how-to](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli). Pass the flag again for each new session.
 
 Next: [Route work through `/poteto-mode`](./02-poteto-mode.md).

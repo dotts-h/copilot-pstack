@@ -16,7 +16,7 @@ fork it. improve it. make it yours. PRs are welcome!
 
 this repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the mit license. the skills stay in cursor wording. copilot names live in one adapter.
 
-in copilot cli, mount this folder for one session with `copilot --plugin-dir <folder>`. that flag was measured on copilot cli 1.0.98. a lasting install is `copilot plugin install <owner/repo>`. the [copilot cli adapter](./docs/harness/copilot-cli.md) maps cursor names. a remote whose url contains gitlab uses `glab mr`. a github remote uses `gh pr`. `watch-pr` speaks github, so on gitlab that step stays skipped and the shipping gate stays blocked. the menu may show `pstack:poteto-mode`. if that lookup misses, read `skills/poteto-mode/SKILL.md`.
+in copilot cli, mount this folder for one session with `copilot --plugin-dir <folder>`. that flag was measured on copilot cli 1.0.98. a lasting install is `copilot plugin install <owner/repo>`, documented in the [copilot cli plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference). the [copilot cli adapter](./docs/harness/copilot-cli.md) maps cursor names. a remote whose host contains gitlab uses `glab mr`. any other host uses `gh pr`. `watch-pr` queries github, so on gitlab that step stays skipped and the shipping gate stays blocked. if `pstack:poteto-mode` is not found, read `skills/poteto-mode/SKILL.md`.
 
 in cursor:
 
@@ -39,10 +39,12 @@ claude code installs a generated copy of upstream pstack from the [`harness/psta
 
 ## get started
 
-two steps:
+two steps in cursor and claude code:
 
 1. run [`/setup-pstack`](./skills/setup-pstack/SKILL.md), pick a reasoning budget, and choose which models you want.
 2. use [`/poteto-mode`](./skills/poteto-mode/SKILL.md) whenever you're doing anything that requires rigor.
+
+in copilot cli, skip `/setup-pstack` and read the [copilot cli adapter](./docs/harness/copilot-cli.md) instead. it covers how a copilot session passes models to subagents, and how `copilot --agent poteto-mode` keeps the mode on for one session.
 
 new here? the [pstack guide](./docs/guide/README.md) walks you through a first real task, from setup and prompting through verification and overnight runs. stuck, or unsure which skill fits? ask [`/poteto-help`](./skills/poteto-help/SKILL.md).
 
