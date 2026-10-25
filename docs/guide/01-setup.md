@@ -14,7 +14,7 @@ Cursor confirms the plugin is installed.
 
 In Claude Code, run `/plugin marketplace add cursor/plugins`, then `/plugin install pstack@cursor-plugins`. Claude Code prefixes plugin commands, so each command in this guide takes a `pstack:` prefix there, such as `/pstack:setup-pstack`, which writes its model rule to `~/.claude/rules/pstack-models.md`. The [Claude Code adapter](../harness/claude-code.md) covers the other differences.
 
-This repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the MIT license. The skills stay in Cursor wording. In Copilot CLI, install this folder from a local path or a marketplace with `copilot plugin install`. The [plugins page](https://docs.github.com/en/copilot/concepts/customizations/plugins) lists those sources. The exact local-path flag was not measured. The [Copilot CLI adapter](../harness/copilot-cli.md) maps Cursor names. A Cursor-only step is skipped with one line. Auto ignores a subagent profile model, so pick a named session model before a run that needs per-role models. The CLI name for a plugin skill was not measured.
+This repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the MIT license. The skills stay in Cursor wording. In Copilot CLI, mount this folder for one session with `copilot --plugin-dir <folder>`. That flag was measured on Copilot CLI 1.0.98. A lasting install is `copilot plugin install <owner/repo>`. The [Copilot CLI adapter](../harness/copilot-cli.md) maps Cursor names. A remote whose URL contains `gitlab` uses `glab mr`. A GitHub remote uses `gh pr`. The menu may show `pstack:poteto-mode`. If that lookup misses, read `skills/poteto-mode/SKILL.md`.
 
 ## Pick your models
 
