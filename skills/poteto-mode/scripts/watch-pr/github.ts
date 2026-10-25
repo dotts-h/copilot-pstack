@@ -8,11 +8,14 @@ export const PR_COMMIT_STATUS_QUERY =
 export const PR_CHECK_ROLLUP_QUERY =
   "\nquery PrCheckRollup($owner: String!, $repo: String!, $pr: Int!, $after: String) {\n  repository(owner: $owner, name: $repo) {\n    pullRequest(number: $pr) {\n      commits(last: 1) {\n        nodes {\n          commit {\n            statusCheckRollup {\n              contexts(first: 100, after: $after) {\n                pageInfo {\n                  hasNextPage\n                  endCursor\n                }\n                nodes {\n                  __typename\n                  ... on CheckRun {\n                    name\n                    status\n                    conclusion\n                    detailsUrl\n                  }\n                  ... on StatusContext {\n                    context\n                    state\n                    targetUrl\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n";
 
-interface CommandResult {
+export interface CommandResult {
   readonly code: number;
   readonly stdout: string;
   readonly stderr: string;
 }
+export type CommandRunner = (
+  argv: readonly [string, ...string[]]
+) => Promise<CommandResult>;
 export class WatcherQueryError extends Error {
   readonly failure: T.QueryFailure;
   constructor(failure: T.QueryFailure) {
@@ -29,7 +32,9 @@ export class ChecksUnavailable extends WatcherQueryError {
 }
 const firstLine = (value: string): string =>
   value.trim().split(/\r?\n/, 1)[0]?.slice(0, 240) ?? "";
-function run(argv: readonly [string, ...string[]]): Promise<CommandResult> {
+export function run(
+  argv: readonly [string, ...string[]]
+): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(argv[0], argv.slice(1), {
       stdio: ["ignore", "pipe", "pipe"],
@@ -70,8 +75,11 @@ function parseJson(text: string, label: string): unknown {
     });
   }
 }
-async function runJson(argv: readonly [string, ...string[]]): Promise<unknown> {
-  const result = await run(argv);
+export async function runJson(
+  argv: readonly [string, ...string[]],
+  exec: CommandRunner = run
+): Promise<unknown> {
+  const result = await exec(argv);
   if (result.code !== 0)
     throw new WatcherQueryError({
       kind: "command-exit",
@@ -89,7 +97,7 @@ function raw(value: unknown): string {
     return String(value);
   }
 }
-function missing(path: string, value?: unknown): never {
+export function missing(path: string, value?: unknown): never {
   throw new WatcherQueryError({
     kind: "missing-key",
     retryable: true,
@@ -103,11 +111,11 @@ function missing(path: string, value?: unknown): never {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function record(value: unknown, path: string): Record<string, unknown> {
+export function record(value: unknown, path: string): Record<string, unknown> {
   if (!isRecord(value)) missing(path, value);
   return value;
 }
-function list(value: unknown, path: string): readonly unknown[] {
+export function list(value: unknown, path: string): readonly unknown[] {
   if (!Array.isArray(value)) missing(path, value);
   return value;
 }
@@ -120,11 +128,11 @@ function at(value: unknown, path: readonly string[]): unknown {
   }
   return current;
 }
-function string(value: unknown, path: string): string {
+export function string(value: unknown, path: string): string {
   if (typeof value !== "string") missing(path, value);
   return value;
 }
-const optionalString = (value: unknown, path: string): string | null =>
+export const optionalString = (value: unknown, path: string): string | null =>
   value === null ? null : string(value, path);
 function enumValue<const V extends readonly string[]>(
   value: unknown,
@@ -467,6 +475,7 @@ function graphqlArgs(
 }
 
 export class GhGitHubReader implements T.GitHubReader {
+  readonly forge = "github";
   async originRepo(): Promise<T.Repository | null> {
     const result = await run(["git", "remote", "get-url", "origin"]);
     return result.code === 0 ? parseRemote(result.stdout) : null;
@@ -657,7 +666,7 @@ export async function resolveReviewThreads(
   return buildReviewThreads(threads);
 }
 export async function resolveContext(args: {
-  readonly reader: T.GitHubReader;
+  readonly reader: T.ForgeReader;
   readonly owner: string | null;
   readonly repo: string | null;
   readonly pr: T.PrNumber | null;

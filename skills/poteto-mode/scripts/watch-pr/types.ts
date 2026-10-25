@@ -88,7 +88,7 @@ export type Check =
 export type FailedCheck = Extract<Check, { readonly kind: "failed" }>;
 export type PendingCheck = Extract<Check, { readonly kind: "pending" }>;
 export interface CheckRead {
-  readonly source: "gh-pr-checks" | "graphql-rollup";
+  readonly source: "gh-pr-checks" | "graphql-rollup" | "gitlab-head-pipeline";
   readonly checks: NonEmpty<Check>;
 }
 export interface CommitRollup {
@@ -234,6 +234,11 @@ export type QueryFailure =
       readonly retryable: false;
       readonly detail: string;
       readonly rawValue: string;
+    }
+  | {
+      readonly kind: "unsupported";
+      readonly retryable: false;
+      readonly detail: string;
     };
 /**
  * `frontier` names the lowest unmerged PR that is actually waiting, and
@@ -395,6 +400,7 @@ export interface ReviewThreadPage {
   readonly endCursor: string | null;
 }
 export interface GitHubReader {
+  readonly forge: "github";
   originRepo(): Promise<Repository | null>;
   currentPr(pr: PrNumber | null): Promise<PrContext>;
   pullRequest(context: PrContext): Promise<PullRequestFacts>;
@@ -410,6 +416,29 @@ export interface GitHubReader {
   ): Promise<ReviewThreadPage>;
   commitRollups(context: PrContext): Promise<readonly CommitRollup[]>;
 }
+export type PipelineCheck = Exclude<
+  Check,
+  { readonly kind: "code-review-gate" }
+>;
+export type HeadPipeline =
+  | { readonly kind: "visible"; readonly check: PipelineCheck }
+  | { readonly kind: "missing"; readonly detail: string };
+export interface MergeRequestRead {
+  readonly facts: PullRequestFacts;
+  readonly pipeline: HeadPipeline;
+}
+export type GitLabThread = ReviewThread & {
+  readonly isBugbot: false;
+  readonly bugbotReviewPasses: 0;
+};
+export interface GitLabReader {
+  readonly forge: "gitlab";
+  originRepo(): Promise<Repository | null>;
+  currentPr(pr: PrNumber | null): Promise<PrContext>;
+  mergeRequest(context: PrContext): Promise<MergeRequestRead>;
+  unresolvedThreads(context: PrContext): Promise<readonly GitLabThread[]>;
+}
+export type ForgeReader = GitHubReader | GitLabReader;
 export interface PollingOptions {
   readonly interval: number;
   readonly sweepInterval: number;

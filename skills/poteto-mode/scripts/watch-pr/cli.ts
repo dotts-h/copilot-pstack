@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   Command,
@@ -5,13 +6,10 @@ import {
   InvalidArgumentError,
   Option,
 } from "commander";
+import { WatcherQueryError } from "./github.ts";
+import { readerForRemote } from "./gitlab.ts";
 import {
-  GhGitHubReader,
-  WatcherQueryError,
-  discoverStack,
-  resolveContext,
-} from "./github.ts";
-import {
+  resolveWatchContexts,
   runQueued,
   runSimple,
   statusQueryVerdict,
@@ -151,14 +149,20 @@ export function parseArgs(
   };
 }
 export interface CliRuntime {
-  readonly reader: T.GitHubReader;
+  readonly reader: T.ForgeReader;
   readonly clock: WatchClock;
   readonly stdout: (value: string) => void;
   readonly stderr: (value: string) => void;
 }
+function originRemote(): string | null {
+  const result = spawnSync("git", ["remote", "get-url", "origin"], {
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
 function realRuntime(): CliRuntime {
   return {
-    reader: new GhGitHubReader(),
+    reader: readerForRemote(originRemote()),
     clock: {
       now: () => performance.now() / 1_000,
       observedAt: () => new Date().toISOString(),
@@ -186,17 +190,14 @@ export async function main(
     runtime.stdout(render(verdict));
   let contexts: T.NonEmpty<T.PrContext>;
   try {
-    const seed = await resolveContext({
+    contexts = await resolveWatchContexts({
       reader: runtime.reader,
+      mode: options.mode,
       owner: options.owner,
       repo: options.repo,
-      pr: options.pr ?? options.stackPrs[0] ?? null,
+      pr: options.pr,
+      stackPrs: options.stackPrs,
     });
-    contexts =
-      nonEmpty(options.stackPrs.map((number) => ({ ...seed, number }))) ??
-      (options.mode === "single"
-        ? [seed]
-        : await discoverStack(runtime.reader, seed));
   } catch (error) {
     if (!(error instanceof WatcherQueryError)) throw error;
     const verdict = statusQueryVerdict(

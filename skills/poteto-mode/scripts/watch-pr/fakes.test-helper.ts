@@ -87,6 +87,7 @@ export function fakeReader(
   let page = 0;
   let threadPage = 0;
   return {
+    forge: "github",
     calls,
     async originRepo() {
       calls.push("originRepo");
