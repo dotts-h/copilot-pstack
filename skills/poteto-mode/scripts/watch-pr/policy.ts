@@ -131,6 +131,12 @@ async function readMergeRequest(
     throw new ChecksUnavailable(
       `could not read MR pipeline: ${pipeline.detail}`
     );
+  if (pipeline.kind === "merged-results")
+    throw new WatcherQueryError({
+      kind: "unsupported",
+      retryable: false,
+      detail: `the head pipeline tested ${pipeline.ref}, and the GitLab API does not report which merge request commit that was`,
+    });
   const threads = await reader.unresolvedThreads(context);
   return {
     kind: "open",

@@ -429,6 +429,34 @@ test("a merge request with no head pipeline fails closed at exit 7", async () =>
   }
 });
 
+test("a merged results head pipeline ends at exit 7 without a retry", async () => {
+  const fixture = commandFixture([
+    [
+      GLAB_MR,
+      [
+        ok(
+          mergeRequestBody({
+            head_pipeline: pipelineBody({
+              ref: "refs/merge-requests/7/merge",
+              sha: "1604b0c46c395822e4e9478777f8e54ac99fe5b9",
+            }),
+          })
+        ),
+      ],
+    ],
+  ]);
+  const { verdict, emitted, sleeps } = await watchMr(fixture.run);
+  const blocker = exitBlocker(verdict, 7);
+  assert.equal(blocker.kind, "status-query");
+  assert.equal(blocker.failures, 1);
+  assert.equal(blocker.failure.kind, "unsupported");
+  assert.equal(blocker.failure.retryable, false);
+  assert.match(blocker.failure.detail, /refs\/merge-requests\/7\/merge/);
+  assert.deepEqual(emitted, []);
+  assert.deepEqual(sleeps, []);
+  assert.deepEqual(fixture.calls, [GLAB_MR]);
+});
+
 test("a merged merge request is READY", async () => {
   const fixture = commandFixture([
     [

@@ -131,6 +131,7 @@ function parseMergeRequestUrl(value: string): T.PrContext {
 }
 function parseHeadPipeline(
   value: unknown,
+  context: T.PrContext,
   headSha: string | null
 ): T.HeadPipeline {
   if (value === undefined || value === null)
@@ -139,9 +140,11 @@ function parseHeadPipeline(
       detail: "merge request has no visible head pipeline",
     };
   const pipeline = record(value, "merge request.head_pipeline");
+  const ref = string(pipeline.ref, "merge request.head_pipeline.ref");
+  if (ref === `refs/merge-requests/${context.number}/merge`)
+    return { kind: "merged-results", ref };
   const status = string(pipeline.status, "merge request.head_pipeline.status");
   const pipelineSha = string(pipeline.sha, "merge request.head_pipeline.sha");
-  // The raw head_pipeline association can lag a push, and the API has no source_sha.
   if (pipelineSha !== headSha)
     return {
       kind: "missing",
@@ -195,7 +198,7 @@ function parseMergeRequest(
       mergedAt: optionalString(object.merged_at, "merge request.merged_at"),
       isDraft: object.draft,
     },
-    pipeline: parseHeadPipeline(object.head_pipeline, sha),
+    pipeline: parseHeadPipeline(object.head_pipeline, context, sha),
   };
 }
 function parseNote(note: Record<string, unknown>): T.ReviewComment {

@@ -422,7 +422,8 @@ export type PipelineCheck = Exclude<
 >;
 export type HeadPipeline =
   | { readonly kind: "visible"; readonly check: PipelineCheck }
-  | { readonly kind: "missing"; readonly detail: string };
+  | { readonly kind: "missing"; readonly detail: string }
+  | { readonly kind: "merged-results"; readonly ref: string };
 export interface MergeRequestRead {
   readonly facts: PullRequestFacts;
   readonly pipeline: HeadPipeline;
