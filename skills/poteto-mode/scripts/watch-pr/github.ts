@@ -44,7 +44,18 @@ function run(argv: readonly [string, ...string[]]): Promise<CommandResult> {
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
-    child.on("error", reject);
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      const missing = error.code === "ENOENT";
+      reject(
+        new WatcherQueryError({
+          kind: "spawn-failed",
+          retryable: false,
+          detail: missing
+            ? `${argv[0]}: not found`
+            : firstLine(error.message || "spawn failed"),
+        }),
+      );
+    });
     child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
   });
 }
