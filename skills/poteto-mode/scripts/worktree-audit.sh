@@ -12,6 +12,61 @@
 #   merge into; pass -b when they differ.
 set -u
 
+worktree_paths() {
+	sed -n 's/^worktree //p'
+}
+
+glab_mr_filter='[.[] | {number: .iid, state: (if .draft == true then "draft" elif .state == "opened" then "open" else .state end), head: .source_branch}]'
+
+audit_bucket() {
+	dirty="$1"
+	pr="$2"
+	merged="$3"
+	recent="$4"
+	case "$dirty" in
+	wip:*) printf '%s\n' hold-wip; return ;;
+	esac
+	case "$pr" in
+	*/open|*/opened|*/draft) printf '%s\n' hold-open-pr; return ;;
+	esac
+	if [ "$recent" = yes ]; then
+		printf '%s\n' verify-recent-chat
+		return
+	fi
+	if [ "$merged" = YES ]; then
+		printf '%s\n' safe
+		return
+	fi
+	case "$pr" in
+	*/merged) printf '%s\n' safe ;;
+	*) printf '%s\n' review ;;
+	esac
+}
+
+newest_chat_ts() {
+	dir="$1"
+	needle="$2"
+	best=0
+	[ -d "$dir" ] || { printf '%s\n' 0; return; }
+	escaped=$(printf '%s' "$needle" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g')
+	edge_slash='/'
+	edge_quote='"'
+	while IFS= read -r file; do
+		file=${file%$'\r'}
+		file=$(printf '%s' "$file" | tr '\\' '/')
+		[ -n "$file" ] || continue
+		ts=$(stat "${stat_fmt[@]}" "$file" 2>/dev/null | awk 'NR==1 { print $1; exit }')
+		if [ -n "${ts:-}" ] && [ "$ts" -gt "$best" ] 2>/dev/null; then
+			best=$ts
+		fi
+	done < <(rg -l -e "${escaped}${edge_slash}" -e "${escaped}${edge_quote}" "$dir" 2>/dev/null || true)
+	printf '%s\n' "$best"
+}
+
+if [ "${1:-}" = "--functions-only" ]; then
+	return 0 2>/dev/null || exit 0
+fi
+
 base=""
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -28,7 +83,7 @@ cd "$repo" || exit 1
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "error: not a git repo: $repo" >&2; exit 1; }
 
 # Main worktree is the first entry; everything else is a candidate.
-main_wt=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+main_wt=$(git worktree list --porcelain | worktree_paths | head -n 1)
 
 if [ -z "$base" ]; then
 	for cand in "$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" origin/main origin/master; do
@@ -55,14 +110,15 @@ else
 	stat_fmt=(-f '%m %N'); fmt_day() { date -r "$1" '+%Y-%m-%d'; }
 fi
 
-# PR state by branch, fetched once as [{number, state, head}] with a lowercase
-# state. Origin when its CLI can read this repo's PRs, otherwise gh. Empty when
-# neither can.
 prs=$(mktemp)
+origin_url=$(git remote get-url origin 2>/dev/null || true)
 if command -v origin >/dev/null 2>&1 \
 	&& raw=$(origin pr list --author "@me" --state all --limit 1000 \
 		--json number,status,headRef 2>/dev/null); then
 	printf '%s' "$raw" | jq '[.[] | {number, state: .status, head: .headRef}]' > "$prs" 2>/dev/null
+elif case "$origin_url" in *gitlab*) true ;; *) false ;; esac \
+	&& raw=$(glab mr list --all --per-page 100 --output json 2>/dev/null); then
+	printf '%s' "$raw" | jq "$glab_mr_filter" > "$prs" 2>/dev/null
 elif raw=$(gh pr list --author "@me" --state all --limit 1000 \
 	--json number,state,headRefName 2>/dev/null); then
 	printf '%s' "$raw" | jq '[.[] | {number, state: (.state | ascii_downcase), head: .headRefName}]' > "$prs" 2>/dev/null
@@ -77,7 +133,7 @@ now=$(date +%s)
 echo "# base: $base"
 printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 
-git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
+git worktree list --porcelain | worktree_paths | while IFS= read -r wt; do
 	[ "$wt" = "$main_wt" ] && continue
 
 	size=$(du -sh "$wt" 2>/dev/null | awk '{print $1}')
@@ -108,24 +164,17 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
 		'.[] | select(.head==$b) | "#\(.number)/\(.state)"' "$prs" 2>/dev/null | head -1)
 	[ -z "$pr" ] && pr="-"
 
-	# Most recent chat whose transcript operated in this worktree. Match path
-	# followed by "/" or a quote so glint-482 does not match glint-482-r37.
-	last="-"; last_ts=0
-	if [ -d "$transcripts" ]; then
-		f=$(rg -l -e "${wt}/" -e "${wt}\"" "$transcripts" 2>/dev/null \
-			| xargs stat "${stat_fmt[@]}" 2>/dev/null | sort -rn | head -1)
-		if [ -n "$f" ]; then last_ts=$(echo "$f" | awk '{print $1}')
-			last=$(fmt_day "$last_ts" 2>/dev/null); fi
+	last_ts=$(newest_chat_ts "$transcripts" "$wt")
+	copilot_ts=$(newest_chat_ts "$HOME/.copilot/session-state" "$wt")
+	if [ "$copilot_ts" -gt "$last_ts" ] 2>/dev/null; then last_ts=$copilot_ts; fi
+	if [ "$last_ts" -gt 0 ] 2>/dev/null; then
+		last=$(fmt_day "$last_ts" 2>/dev/null || printf '%s' "-")
+	else
+		last="-"; last_ts=0
 	fi
 	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
-	case "$dirty" in wip:*) bucket=hold-wip ;; *)
-		case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
-			if [ "$recent" = yes ]; then bucket=verify-recent-chat
-			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
-			else bucket=review; fi ;;
-		esac ;;
-	esac
+	bucket=$(audit_bucket "$dirty" "$pr" "$merged" "$recent")
 
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
