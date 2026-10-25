@@ -220,6 +220,11 @@ export type QueryFailure =
       readonly code: number;
     }
   | {
+      readonly kind: "spawn-failed";
+      readonly retryable: false;
+      readonly detail: string;
+    }
+  | {
       readonly kind: "checks-unavailable";
       readonly retryable: true;
       readonly detail: string;

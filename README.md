@@ -16,7 +16,7 @@ fork it. improve it. make it yours. PRs are welcome!
 
 this repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the mit license. the skills stay in cursor wording. copilot names live in one adapter.
 
-in copilot cli, install this folder from a local path or a marketplace with `copilot plugin install`. the [plugins page](https://docs.github.com/en/copilot/concepts/customizations/plugins) lists those sources. the exact local-path flag was not measured. the [copilot cli adapter](./docs/harness/copilot-cli.md) maps cursor names. a cursor-only step is skipped with one line. auto ignores a subagent profile model, so pick a named session model before a run that needs per-role models. the cli name for a plugin skill was not measured.
+in copilot cli, mount this folder for one session with `copilot --plugin-dir <folder>`. that flag was measured on copilot cli 1.0.98. a lasting install is `copilot plugin install <owner/repo>`. the [copilot cli adapter](./docs/harness/copilot-cli.md) maps cursor names. a remote whose url contains gitlab uses `glab mr`. a github remote uses `gh pr`. `watch-pr` speaks github, so on gitlab that step stays skipped and the shipping gate stays blocked. the menu may show `pstack:poteto-mode`. if that lookup misses, read `skills/poteto-mode/SKILL.md`.
 
 in cursor:
 
