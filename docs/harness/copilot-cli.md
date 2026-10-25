@@ -71,25 +71,28 @@ For a missing convenience, write `Skipped in Copilot CLI: <step>. <reason>.`, th
 
 ## Forge commands
 
-Read `git remote get-url origin` before the first forge command. A URL that contains `gitlab` is GitLab. Any other URL stays on the playbook `gh` command.
+Read `git remote get-url origin` before the first forge command, and take the host from that URL. A host that contains `gitlab`, such as `gitlab.com` or `gitlab.example.com`, is GitLab. Any other host stays on the playbook `gh` command. The path does not count, so `https://github.com/org/gitlab-tools` stays on GitHub. In an SSH remote such as `git@gitlab.com:group/repo.git`, the host is `gitlab.com`. A GitLab server whose host does not contain `gitlab`, such as `git.example.com`, also stays on `gh`. That case is unresolved.
 
-On GitLab, use the command in the row. These flags come from the GitLab CLI docs fetched 25 October 2026. `glab` was not installed on the machine that wrote this note, so the commands were not run here.
+On GitLab, use the command in the row. These flags come from the GitLab CLI docs fetched 25 October 2026, except where a citation below gives another date. `glab` was not installed on the machine that wrote this note, so the commands were not run here.
 
 | Playbook command | GitLab command |
 | --- | --- |
 | `gh pr create --base <branch>` | `glab mr create --target-branch <branch>` |
 | `gh pr view <id>` | `glab mr view <id>` |
+| `gh pr view <id> --json state,mergedAt,baseRefName` | `glab mr view <id> --output json` |
 | `gh pr merge <id>` | `glab mr merge <id>` |
 | `gh pr edit <id> --base <branch>` | `glab mr update <id> --target-branch <branch>` |
 | `gh pr ready <id>` | `glab mr update <id> --ready` |
 | `gh pr list` | `glab mr list --all --per-page 100 --output json` |
-| `gh pr checks` | `glab ci status` |
+| `gh pr checks <id>` | `glab ci get --merge-request <id>` |
 
-`glab mr create` is documented at https://docs.gitlab.com/cli/mr/create/. `glab mr update` is documented at https://docs.gitlab.com/cli/mr/update/. `glab mr merge` is documented at https://docs.gitlab.com/cli/mr/merge/. `glab mr list` is documented at https://docs.gitlab.com/cli/mr/list/. `glab ci status` is documented at https://docs.gitlab.com/cli/ci/status/.
+`glab mr create` is documented at https://docs.gitlab.com/cli/mr/create/. `glab mr update` is documented at https://docs.gitlab.com/cli/mr/update/. `glab mr merge` is documented at https://docs.gitlab.com/cli/mr/merge/. `glab mr list` is documented at https://docs.gitlab.com/cli/mr/list/. `glab ci get` is documented at https://docs.gitlab.com/cli/ci/get/, fetched 26 October 2026. That page says its `--merge-request` flag takes the merge request IID and reads that request's head pipeline. Do not use bare `glab ci status` for checks, because it reads the current branch, documented at https://docs.gitlab.com/cli/ci/status/, fetched 26 October 2026.
+
+For the shipping readback on GitLab, run `glab mr view <id> --output json`. The `glab mr view` page at https://docs.gitlab.com/cli/mr/view/, fetched 26 October 2026, lists `--output json` and names no JSON fields. Read that JSON once, then name the fields the readback used. Do not assume a `mergedAt` field.
 
 `skills/poteto-mode/scripts/watch-pr` queries GitHub. On GitLab, skip it. A missing watcher result does not clear a shipping gate. A missing `gh` binary returns a non-retryable watcher error.
 
-`skills/poteto-mode/scripts/worktree-audit.sh` uses `glab mr list --all --per-page 100 --output json` when the origin URL contains `gitlab`. A closed request that is not merged is `review`. A merged request is `safe` when the worktree is clean and no recent chat touched it.
+`skills/poteto-mode/scripts/worktree-audit.sh` lists GitLab merge requests with `glab mr list --all --per-page 100 --output json`. A closed request that is not merged is `review`. A merged request is `safe` when the worktree is clean and no recent chat touched it.
 
 ## Other Copilot surfaces
 
