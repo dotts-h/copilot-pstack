@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test orch watch-pr check-plan.test.ts",
+    "test:node": "node --experimental-strip-types --test watch-pr/spawn-missing.check.ts watch-pr/policy.check.ts watch-pr/gitlab.check.ts",
     "typecheck": "tsc --project watch-pr/tsconfig.json --noEmit --strict"
   },
   "dependencies": {
