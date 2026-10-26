@@ -36,6 +36,17 @@ got=$(printf 'worktree /repo/my feature\nworktree /other\n' | worktree_paths | h
 got=$(printf 'worktree /repo/my feature\n' | worktree_paths | while IFS= read -r wt; do printf '%s' "$wt"; done)
 [ "$got" = '/repo/my feature' ] || fail "read split: [$got]"
 
+assert_transcripts() {
+	got=$(HOME=/h transcripts_dir "$1")
+	[ "$got" = "/h/.cursor/projects/$2/agent-transcripts" ] || fail "transcripts for $1 got $got want slug $2"
+}
+
+assert_transcripts 'C:/Users/me/repo' c-Users-me-repo
+assert_transcripts 'C:\Users\me\repo' c-Users-me-repo
+assert_transcripts 'D:\Repos\Cursor\copilot-pstack' d-Repos-Cursor-copilot-pstack
+assert_transcripts /c/Users c-Users
+assert_transcripts /Users/foo Users-foo
+
 want_filter='[.[] | {number: .iid, state: (if .draft == true then "draft" elif .state == "opened" then "open" else .state end), head: .source_branch, headSha: .sha}]'
 [ "$glab_mr_filter" = "$want_filter" ] || fail "glab filter drifted: $glab_mr_filter"
 sample='[{"iid":7,"state":"closed","draft":false,"source_branch":"feat","sha":"a1"},{"iid":8,"state":"opened","draft":true,"source_branch":"wip","sha":"b2"},{"iid":9,"state":"merged","draft":false,"source_branch":"done","sha":"c3"},{"iid":10,"state":"opened","draft":false,"source_branch":"open","sha":"d4"}]'
@@ -148,7 +159,7 @@ cursor_line() {
 }
 
 transcripts() {
-	printf '%s/.cursor/projects/%s/agent-transcripts' "$tmp/home" "$(printf '%s' "$1" | sed 's#^/##; s#/#-#g')"
+	HOME="$tmp/home" transcripts_dir "$1"
 }
 
 gh_row() {
