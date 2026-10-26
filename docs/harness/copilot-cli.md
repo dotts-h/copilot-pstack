@@ -115,7 +115,7 @@ For the shipping readback on GitLab, run `glab mr view <id> --output json`. The 
 
 `skills/poteto-mode/scripts/watch-pr` queries GitHub. On GitLab, skip it. A missing watcher result does not clear a shipping gate. A missing `gh` binary returns a non-retryable watcher error.
 
-`skills/poteto-mode/scripts/worktree-audit.sh` lists GitLab merge requests with `glab mr list --all --per-page 100 --output json`. A closed request that is not merged is `review`. A merged request is `safe` when the worktree is clean and no recent chat touched it.
+`skills/poteto-mode/scripts/worktree-audit.sh` lists GitLab merge requests with `glab mr list --all --per-page 100 --output json`. A closed request that is not merged is `review`. A merged request is `safe` only when the worktree has no tracked edits, no recent chat touched it, and either `HEAD` is an ancestor of the base or `HEAD` equals the merged head SHA recorded on the request; a merged request with any other head is `review`. A check that fails is `blocked`, never `safe`, and the row shows `?` for it: a failed `git status`, a pull-request list that no source returned or that could not be read, an `rg` error during the transcript search, or a chat line with no usable event time. The script picks `glab` when the host of the `origin` remote contains `gitlab`, so a `github.com` URL whose path contains `gitlab` stays on `gh`.
 
 ## Other Copilot surfaces
 
