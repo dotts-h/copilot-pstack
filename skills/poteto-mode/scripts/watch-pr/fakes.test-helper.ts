@@ -1,10 +1,15 @@
+import type { CommandResult, CommandRunner } from "./github.ts";
+import { runSimple } from "./policy.ts";
 import type {
   Check,
   ChecksFastPath,
   CommitRollup,
+  ForgeReader,
   GitHubReader,
   OpenPullRequest,
+  PollingOptions,
   PrContext,
+  ProgressVerdict,
   PullRequestFacts,
   Repository,
   RawReviewThread,
@@ -87,6 +92,7 @@ export function fakeReader(
   let page = 0;
   let threadPage = 0;
   return {
+    forge: "github",
     calls,
     async originRepo() {
       calls.push("originRepo");
@@ -126,4 +132,140 @@ export function fakeReader(
       return options.commitRollups ?? [{ oid: "head", state: "SUCCESS" }];
     },
   };
+}
+
+export type CommandEntry = readonly [
+  readonly [string, ...string[]],
+  readonly CommandResult[],
+];
+
+export function commandFixture(entries: readonly CommandEntry[]): {
+  readonly run: CommandRunner;
+  readonly calls: readonly (readonly string[])[];
+} {
+  const queues = new Map(
+    entries.map(([argv, results]) => [argv.join("\0"), [...results]])
+  );
+  const calls: (readonly string[])[] = [];
+  const run: CommandRunner = async (argv) => {
+    calls.push(argv);
+    const queue = queues.get(argv.join("\0")) ?? [];
+    const next = queue.length > 1 ? queue.shift() : queue[0];
+    if (next === undefined)
+      throw new Error(`unexpected command: ${argv.join(" ")}`);
+    return next;
+  };
+  return { run, calls };
+}
+
+export const ok = (body: unknown): CommandResult => ({
+  code: 0,
+  stdout: JSON.stringify(body),
+  stderr: "",
+});
+
+export const GITLAB_ORIGIN: Repository = {
+  owner: "group/sub",
+  repo: "project",
+};
+export const GITLAB_CONTEXT: PrContext = {
+  ...GITLAB_ORIGIN,
+  number: parsePrNumber(7),
+};
+export const GITLAB_MR_URL =
+  "https://gitlab.corp.internal/group/sub/project/-/merge_requests/7";
+export const GITLAB_PIPELINE_URL =
+  "https://gitlab.corp.internal/group/sub/project/-/pipelines/99";
+export const GLAB_MR = [
+  "glab",
+  "api",
+  "projects/group%2Fsub%2Fproject/merge_requests/7",
+] as const;
+export function glabDiscussions(page: number): CommandEntry[0] {
+  return [
+    "glab",
+    "api",
+    "projects/group%2Fsub%2Fproject/merge_requests/7/discussions",
+    "--method",
+    "GET",
+    "--raw-field",
+    "per_page=100",
+    "--raw-field",
+    `page=${page}`,
+  ] as const;
+}
+
+export const GLAB_DISCUSSIONS = glabDiscussions(1);
+const GITLAB_HEAD = "0123456789abcdef0123456789abcdef01234567";
+
+export function pipelineBody(
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    id: 99,
+    iid: 12,
+    project_id: 3,
+    sha: GITLAB_HEAD,
+    ref: "feature",
+    status: "success",
+    source: "merge_request_event",
+    web_url: GITLAB_PIPELINE_URL,
+    ...overrides,
+  };
+}
+
+export function mergeRequestBody(
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    iid: 7,
+    state: "opened",
+    draft: false,
+    has_conflicts: false,
+    detailed_merge_status: "mergeable",
+    sha: GITLAB_HEAD,
+    source_branch: "feature",
+    target_branch: "main",
+    merged_at: null,
+    web_url: GITLAB_MR_URL,
+    head_pipeline: pipelineBody(),
+    ...overrides,
+  };
+}
+
+export async function watchSingle(
+  reader: ForgeReader,
+  context: PrContext,
+  polling: Partial<PollingOptions> = {},
+  statusOnly = false
+) {
+  let now = 0;
+  const sleeps: number[] = [];
+  const emitted: ProgressVerdict[] = [];
+  const verdict = await runSimple({
+    dependencies: {
+      reader,
+      clock: {
+        now: () => now,
+        observedAt: () => "2026-07-26T00:00:00.000Z",
+        async sleep(seconds) {
+          sleeps.push(seconds);
+          now += seconds;
+        },
+      },
+      emit: (progress) => emitted.push(progress),
+    },
+    contexts: [context],
+    mode: "single",
+    statusOnly,
+    options: {
+      interval: 60,
+      sweepInterval: 300,
+      timeout: 0,
+      maxQueryErrors: 5,
+      allowDraft: false,
+      ...polling,
+    },
+  });
+  return { verdict, sleeps, emitted };
 }

@@ -1,6 +1,9 @@
 import {
+  ChecksUnavailable,
   WatcherQueryError,
+  discoverStack,
   resolveChecks,
+  resolveContext,
   resolveReviewThreads,
 } from "./github.ts";
 import type * as T from "./types.ts";
@@ -50,25 +53,15 @@ async function mergeAssessment(
     }),
   };
 }
-const AUTOMATION_TOKENS = [
-  "bugbot",
-  "security review",
-  "pr review automation",
-  "review automation",
-] as const;
-export async function readSnapshot(args: {
-  readonly reader: T.GitHubReader;
-  readonly context: T.PrContext;
-  readonly pendingHistory: "include" | "omit";
-  readonly allowDraft: boolean;
-}): Promise<T.PrSnapshot> {
-  const facts = await args.reader.pullRequest(args.context);
-  if (facts.state === "MERGED" || facts.mergedAt !== null)
-    return { kind: "merged", context: args.context, facts };
-  if (facts.state === "CLOSED")
-    return { kind: "closed", context: args.context, facts };
-  const threads = await resolveReviewThreads(args.reader, args.context);
-  const checks = await resolveChecks(args.reader, args.context);
+interface MergeRead {
+  readonly hadPreviousPassingCi: boolean;
+  readonly github: T.GitHubMergeAssessment;
+}
+async function settleCi(
+  checks: T.CheckRead,
+  pendingHistory: "include" | "omit",
+  readMerge: () => Promise<MergeRead>
+): Promise<T.CiState> {
   const failed = nonEmpty(
     checks.checks.filter(
       (check): check is T.FailedCheck => check.kind === "failed"
@@ -80,7 +73,7 @@ export async function readSnapshot(args: {
     )
   );
   let ci: T.CiState;
-  if (failed === null && pending !== null && args.pendingHistory === "omit")
+  if (failed === null && pending !== null && pendingHistory === "omit")
     ci = {
       kind: "ci-pending",
       source: checks.source,
@@ -90,7 +83,7 @@ export async function readSnapshot(args: {
       hadPreviousPassingCi: false,
     };
   else {
-    const merge = await mergeAssessment(args.reader, facts);
+    const merge = await readMerge();
     const base = {
       source: checks.source,
       all: checks.checks,
@@ -123,12 +116,81 @@ export async function readSnapshot(args: {
         github: merge.github,
       };
   }
+  return ci;
+}
+async function readMergeRequest(
+  reader: T.GitLabReader,
+  context: T.PrContext,
+  pendingHistory: "include" | "omit"
+): Promise<T.PrSnapshot> {
+  const { facts, pipeline, mergeCheck } = await reader.mergeRequest(context);
+  if (facts.state === "MERGED" || facts.mergedAt !== null)
+    return { kind: "merged", context, facts };
+  if (facts.state === "CLOSED") return { kind: "closed", context, facts };
+  if (pipeline.kind === "missing")
+    throw new ChecksUnavailable(
+      `could not read MR pipeline: ${pipeline.detail}`
+    );
+  if (pipeline.kind === "merged-results")
+    throw new WatcherQueryError({
+      kind: "unsupported",
+      retryable: false,
+      detail: `the head pipeline tested ${pipeline.ref}, and the GitLab API does not report which merge request commit that was`,
+    });
+  const threads = await reader.unresolvedThreads(context);
+  return {
+    kind: "open",
+    context,
+    facts,
+    threads,
+    ci: await settleCi(
+      {
+        source: "gitlab-merge-request",
+        checks:
+          mergeCheck === null ? [pipeline.check] : [pipeline.check, mergeCheck],
+      },
+      pendingHistory,
+      async () => ({
+        hadPreviousPassingCi: false,
+        github: assessGitHubMerge({
+          mergeStateStatus: facts.mergeStateStatus,
+          headRollupState: null,
+        }),
+      })
+    ),
+    reviewAutomationRunning: false,
+  };
+}
+const AUTOMATION_TOKENS = [
+  "bugbot",
+  "security review",
+  "pr review automation",
+  "review automation",
+] as const;
+export async function readSnapshot(args: {
+  readonly reader: T.ForgeReader;
+  readonly context: T.PrContext;
+  readonly pendingHistory: "include" | "omit";
+  readonly allowDraft: boolean;
+}): Promise<T.PrSnapshot> {
+  const { reader } = args;
+  if (reader.forge === "gitlab")
+    return readMergeRequest(reader, args.context, args.pendingHistory);
+  const facts = await reader.pullRequest(args.context);
+  if (facts.state === "MERGED" || facts.mergedAt !== null)
+    return { kind: "merged", context: args.context, facts };
+  if (facts.state === "CLOSED")
+    return { kind: "closed", context: args.context, facts };
+  const threads = await resolveReviewThreads(reader, args.context);
+  const checks = await resolveChecks(reader, args.context);
   return {
     kind: "open",
     context: args.context,
     facts,
     threads,
-    ci,
+    ci: await settleCi(checks, args.pendingHistory, () =>
+      mergeAssessment(reader, facts)
+    ),
     reviewAutomationRunning: checks.checks.some(
       (check) =>
         check.kind === "pending" &&
@@ -345,7 +407,7 @@ export interface WatchClock {
   sleep(seconds: number): Promise<void>;
 }
 export interface RunDependencies {
-  readonly reader: T.GitHubReader;
+  readonly reader: T.ForgeReader;
   readonly clock: WatchClock;
   readonly emit: (verdict: T.ProgressVerdict) => void;
 }
@@ -839,4 +901,38 @@ export async function runQueued(args: {
     stamp,
     step,
   });
+}
+export async function resolveWatchContexts(args: {
+  readonly reader: T.ForgeReader;
+  readonly mode: T.WatchMode;
+  readonly owner: string | null;
+  readonly repo: string | null;
+  readonly pr: T.PrNumber | null;
+  readonly stackPrs: readonly T.PrNumber[];
+}): Promise<T.NonEmpty<T.PrContext>> {
+  if (args.mode === "single")
+    return [
+      await resolveContext({
+        reader: args.reader,
+        owner: args.owner,
+        repo: args.repo,
+        pr: args.pr,
+      }),
+    ];
+  if (args.reader.forge === "gitlab")
+    throw new WatcherQueryError({
+      kind: "unsupported",
+      retryable: false,
+      detail: `--${args.mode} is not supported on GitLab; watch a single merge request`,
+    });
+  const seed = await resolveContext({
+    reader: args.reader,
+    owner: args.owner,
+    repo: args.repo,
+    pr: args.pr ?? args.stackPrs[0] ?? null,
+  });
+  return (
+    nonEmpty(args.stackPrs.map((number) => ({ ...seed, number }))) ??
+    (await discoverStack(args.reader, seed))
+  );
 }

@@ -1,13 +1,24 @@
 import { describe, expect, it } from "bun:test";
 import { type CliRuntime, main, parseArgs } from "./cli.ts";
-import { fakeReader, passingCheck } from "./fakes.test-helper.ts";
+import {
+  type CommandEntry,
+  GITLAB_ORIGIN,
+  GLAB_DISCUSSIONS,
+  GLAB_MR,
+  commandFixture,
+  fakeReader,
+  mergeRequestBody,
+  ok,
+  passingCheck,
+} from "./fakes.test-helper.ts";
+import { GlabGitLabReader } from "./gitlab.ts";
 import { renderJson, renderPretty } from "./render.ts";
-import type { GitHubReader, WatcherVerdict } from "./types.ts";
+import type { ForgeReader, WatcherVerdict } from "./types.ts";
 import { parsePrNumber } from "./types.ts";
 
 const silentIo = { stdout: () => {}, stderr: () => {} };
 
-function testRuntime(reader: GitHubReader): {
+function testRuntime(reader: ForgeReader): {
   readonly runtime: CliRuntime;
   readonly stdout: string[];
   readonly stderr: string[];
@@ -220,5 +231,67 @@ describe("main", () => {
     expect(await main(["--help"], harness.runtime)).toBe(0);
     expect(harness.stdout.join("")).toContain("JSON (NDJSON while polling)");
     expect(reader.calls).toEqual([]);
+  });
+});
+
+describe("main on a GitLab remote", () => {
+  function gitlabRuntime(entries: readonly CommandEntry[]) {
+    const fixture = commandFixture(entries);
+    return {
+      ...testRuntime(
+        new GlabGitLabReader({ origin: GITLAB_ORIGIN, run: fixture.run })
+      ),
+      calls: fixture.calls,
+    };
+  }
+
+  async function expectUnsupported(argv: readonly string[]) {
+    const harness = gitlabRuntime([]);
+    expect(await main(argv, harness.runtime)).toBe(7);
+    expect(harness.stdout).toHaveLength(1);
+    expect(JSON.parse(harness.stdout[0])).toMatchObject({
+      kind: "BLOCKER",
+      exitCode: 7,
+      blocker: {
+        kind: "status-query",
+        failures: 1,
+        failure: { kind: "unsupported", retryable: false },
+      },
+    });
+    expect(harness.calls).toEqual([]);
+  }
+
+  it("returns 7 for --stack without reading glab", async () => {
+    await expectUnsupported(["--stack"]);
+  });
+
+  it("returns 7 for --queued-stack --stack-prs 7,8 without reading glab", async () => {
+    await expectUnsupported(["--queued-stack", "--stack-prs", "7,8"]);
+  });
+
+  it("returns 7 for status-only queued mode without reading glab", async () => {
+    await expectUnsupported([
+      "--queued-stack",
+      "--stack-prs",
+      "7",
+      "--status-only",
+    ]);
+  });
+
+  it("returns READY for a clean merge request", async () => {
+    const harness = gitlabRuntime([
+      [GLAB_MR, [ok(mergeRequestBody())]],
+      [GLAB_DISCUSSIONS, [ok([])]],
+    ]);
+    expect(await main(["--pr", "7"], harness.runtime)).toBe(0);
+    expect(harness.stdout).toHaveLength(1);
+    expect(JSON.parse(harness.stdout[0])).toMatchObject({
+      kind: "READY",
+      exitCode: 0,
+      scope: {
+        pr: { proof: { ci: { source: "gitlab-merge-request" } } },
+      },
+    });
+    expect(harness.calls).toEqual([GLAB_MR, GLAB_DISCUSSIONS]);
   });
 });
