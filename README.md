@@ -16,7 +16,7 @@ fork it. improve it. make it yours. PRs are welcome!
 
 this repo tracks pstack 0.15.32 from the [pstack tree](https://github.com/cursor/plugins/tree/main/pstack) under the mit license. the skills stay in cursor wording. copilot names live in one adapter.
 
-in copilot cli, mount this folder for one session with `copilot --plugin-dir <folder>`. that flag was measured on copilot cli 1.0.98. a lasting install is `copilot plugin install <owner/repo>`, documented in the [copilot cli plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference). the [copilot cli adapter](./docs/harness/copilot-cli.md) maps cursor names. a remote whose host contains gitlab uses `glab mr`. any other host uses `gh pr`. `watch-pr` queries github, so on gitlab that step stays skipped and the shipping gate stays blocked. if `pstack:poteto-mode` is not found, read `skills/poteto-mode/SKILL.md`.
+in copilot cli, mount this folder for one session with `copilot --plugin-dir <folder>`. that flag was measured on copilot cli 1.0.98. a lasting install is `copilot plugin install <owner/repo>`, documented in the [copilot cli plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference). the [copilot cli adapter](./docs/harness/copilot-cli.md) maps cursor names. a remote whose host contains gitlab uses `glab mr`. any other host uses `gh pr`. `watch-pr` queries github, so on gitlab that step stays skipped and the shipping gate stays blocked. a copilot session reads `skills/poteto-mode/SKILL.md` and the adapter from disk. the copilot `skill` tool did not load `poteto-mode`, measured offline on copilot cli 1.0.98.
 
 in cursor:
 
@@ -44,7 +44,7 @@ two steps in cursor and claude code:
 1. run [`/setup-pstack`](./skills/setup-pstack/SKILL.md), pick a reasoning budget, and choose which models you want.
 2. use [`/poteto-mode`](./skills/poteto-mode/SKILL.md) whenever you're doing anything that requires rigor.
 
-in copilot cli, skip `/setup-pstack` and read the [copilot cli adapter](./docs/harness/copilot-cli.md) instead. it says how to pass models to subagents and how to start the `poteto-mode` session agent. it limits copilot cli to claude sonnet 5.5, gpt-6.1 sol, gpt-6 luna, and gemini 4, and caps reasoning effort at `xhigh` everywhere except arena, which runs at `max`.
+in copilot cli, skip `/setup-pstack` and read the [copilot cli adapter](./docs/harness/copilot-cli.md) instead. it says how to pass models to subagents and how to start the `poteto-mode` session agent. it limits copilot cli to the operator's list of claude sonnet 5.5, gpt-6.1 sol, gpt-6 luna, and gemini 4. it caps reasoning effort at `xhigh` everywhere except arena, which runs at `max`.
 
 new here? the [pstack guide](./docs/guide/README.md) walks you through a first real task, from setup and prompting through verification and overnight runs. stuck, or unsure which skill fits? ask [`/poteto-help`](./skills/poteto-help/SKILL.md).
 
