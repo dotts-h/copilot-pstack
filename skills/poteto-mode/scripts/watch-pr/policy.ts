@@ -123,7 +123,7 @@ async function readMergeRequest(
   context: T.PrContext,
   pendingHistory: "include" | "omit"
 ): Promise<T.PrSnapshot> {
-  const { facts, pipeline } = await reader.mergeRequest(context);
+  const { facts, pipeline, mergeCheck } = await reader.mergeRequest(context);
   if (facts.state === "MERGED" || facts.mergedAt !== null)
     return { kind: "merged", context, facts };
   if (facts.state === "CLOSED") return { kind: "closed", context, facts };
@@ -144,7 +144,11 @@ async function readMergeRequest(
     facts,
     threads,
     ci: await settleCi(
-      { source: "gitlab-head-pipeline", checks: [pipeline.check] },
+      {
+        source: "gitlab-merge-request",
+        checks:
+          mergeCheck === null ? [pipeline.check] : [pipeline.check, mergeCheck],
+      },
       pendingHistory,
       async () => ({
         hadPreviousPassingCi: false,

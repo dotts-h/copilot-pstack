@@ -289,7 +289,7 @@ describe("main on a GitLab remote", () => {
       kind: "READY",
       exitCode: 0,
       scope: {
-        pr: { proof: { ci: { source: "gitlab-head-pipeline" } } },
+        pr: { proof: { ci: { source: "gitlab-merge-request" } } },
       },
     });
     expect(harness.calls).toEqual([GLAB_MR, GLAB_DISCUSSIONS]);

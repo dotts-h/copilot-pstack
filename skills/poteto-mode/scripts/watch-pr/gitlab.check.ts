@@ -65,6 +65,15 @@ function discussion(
   return { id, individual_note: individualNote, notes };
 }
 
+const mergeCheck = (kind: "failed" | "pending", status: string) => ({
+  kind,
+  name: "detailed_merge_status",
+  reportedState: status.toUpperCase(),
+  description: "",
+  link: GITLAB_MR_URL,
+  workflow: "",
+});
+
 const watchMr = (
   run: CommandRunner,
   polling: Partial<PollingOptions> = {},
@@ -210,7 +219,7 @@ test("a clean merge request is READY", async () => {
   const { verdict } = await watchMr(fixture.run);
   const pr = singlePr(verdict);
   assert.equal(pr.kind, "ready-pr");
-  assert.equal(pr.proof.ci.source, "gitlab-head-pipeline");
+  assert.equal(pr.proof.ci.source, "gitlab-merge-request");
   assert.deepEqual(
     pr.proof.ci.all.map((check) => ({
       kind: check.kind,
@@ -574,6 +583,194 @@ test("requested changes are the merge-gate blocker", async () => {
   assert.equal(blocker.reason, "changes-requested");
 });
 
+test("a refused detailed_merge_status is a failing check", async () => {
+  const refused = [
+    "discussions_not_resolved",
+    "ci_must_pass",
+    "status_checks_must_pass",
+    "commits_status",
+    "security_policy_pipeline_check",
+    "security_policy_violations",
+    "merge_request_blocked",
+    "jira_association_missing",
+    "title_regex",
+    "locked_paths",
+    "locked_lfs_files",
+    "merge_time",
+  ] as const;
+  for (const status of refused) {
+    const fixture = commandFixture([
+      [GLAB_MR, [ok(mergeRequestBody({ detailed_merge_status: status }))]],
+      NO_DISCUSSIONS,
+    ]);
+    const { verdict } = await watchMr(fixture.run);
+    assert.equal(verdict.exitCode, 4, status);
+    assert.deepEqual(
+      verdict.blocker.ci.failed,
+      [mergeCheck("failed", status)],
+      status
+    );
+  }
+});
+
+test("unresolved discussions outrank the discussions_not_resolved check", async () => {
+  const fixture = commandFixture([
+    [
+      GLAB_MR,
+      [
+        ok(
+          mergeRequestBody({
+            detailed_merge_status: "discussions_not_resolved",
+          })
+        ),
+      ],
+    ],
+    [
+      GLAB_DISCUSSIONS,
+      [ok([discussion("disc-open", [note({ resolved: false })])])],
+    ],
+    [glabDiscussions(2), [ok([])]],
+  ]);
+  const blocker = exitBlocker((await watchMr(fixture.run)).verdict, 3);
+  assert.equal(blocker.kind, "review-threads");
+  assert.deepEqual(
+    blocker.threads.map((thread) => thread.id),
+    ["disc-open"]
+  );
+});
+
+test("a skipped pipeline fails only when GitLab refuses the merge", async () => {
+  const skipped = {
+    kind: "skipped",
+    name: "pipeline",
+    reportedState: "SKIPPED",
+    description: "",
+    link: GITLAB_PIPELINE_URL,
+    workflow: "",
+  };
+  const refused = commandFixture([
+    [
+      GLAB_MR,
+      [
+        ok(
+          mergeRequestBody({
+            detailed_merge_status: "ci_must_pass",
+            head_pipeline: pipelineBody({ status: "skipped" }),
+          })
+        ),
+      ],
+    ],
+    NO_DISCUSSIONS,
+  ]);
+  const blocker = exitBlocker((await watchMr(refused.run)).verdict, 4);
+  assert.equal(blocker.kind, "failing-checks");
+  assert.equal(blocker.ci.kind, "ci-failing");
+  assert.deepEqual(blocker.ci.all, [
+    skipped,
+    mergeCheck("failed", "ci_must_pass"),
+  ]);
+  assert.deepEqual(blocker.ci.failed, [mergeCheck("failed", "ci_must_pass")]);
+
+  const accepted = commandFixture([
+    [
+      GLAB_MR,
+      [
+        ok(
+          mergeRequestBody({
+            detailed_merge_status: "mergeable",
+            head_pipeline: pipelineBody({ status: "skipped" }),
+          })
+        ),
+      ],
+    ],
+    NO_DISCUSSIONS,
+  ]);
+  const pr = singlePr((await watchMr(accepted.run)).verdict);
+  assert.equal(pr.kind, "ready-pr");
+  assert.deepEqual(pr.proof.ci.all, [skipped]);
+});
+
+test("an unsettled detailed_merge_status waits, then the merge request is READY", async () => {
+  const settling = [
+    "unchecked",
+    "checking",
+    "preparing",
+    "approvals_syncing",
+    "ci_still_running",
+  ] as const;
+  for (const status of settling) {
+    const fixture = commandFixture([
+      [
+        GLAB_MR,
+        [
+          ok(mergeRequestBody({ detailed_merge_status: status })),
+          ok(mergeRequestBody()),
+        ],
+      ],
+      NO_DISCUSSIONS,
+    ]);
+    const { verdict, emitted, sleeps } = await watchMr(fixture.run);
+    assert.equal(emitted.length, 1, status);
+    const [waiting] = emitted;
+    assert.equal(waiting.kind, "WAITING", status);
+    assert.equal(waiting.reason.kind, "pending-checks", status);
+    assert.deepEqual(
+      waiting.reason.pending,
+      [mergeCheck("pending", status)],
+      status
+    );
+    assert.deepEqual(sleeps, [60], status);
+    assert.equal(singlePr(verdict).kind, "ready-pr", status);
+  }
+});
+
+test("a locked merge request waits until it merges", async () => {
+  const fixture = commandFixture([
+    [
+      GLAB_MR,
+      [
+        ok(
+          mergeRequestBody({
+            state: "locked",
+            detailed_merge_status: "not_open",
+          })
+        ),
+        ok(mergeRequestBody({ state: "merged", merged_at: CREATED_AT })),
+      ],
+    ],
+    NO_DISCUSSIONS,
+  ]);
+  const { verdict, emitted, sleeps } = await watchMr(fixture.run);
+  assert.equal(emitted.length, 1);
+  const [waiting] = emitted;
+  assert.equal(waiting.kind, "WAITING");
+  assert.equal(waiting.reason.kind, "pending-checks");
+  assert.deepEqual(waiting.reason.pending, [mergeCheck("pending", "not_open")]);
+  assert.deepEqual(sleeps, [60]);
+  assert.equal(singlePr(verdict).kind, "merged-pr");
+});
+
+test("not_approved and need_rebase stay READY, the waits GitHub also reports as READY", async () => {
+  const notApproved = commandFixture([
+    [
+      GLAB_MR,
+      [ok(mergeRequestBody({ detailed_merge_status: "not_approved" }))],
+    ],
+    NO_DISCUSSIONS,
+  ]);
+  const review = singlePr((await watchMr(notApproved.run)).verdict);
+  assert.equal(review.kind, "ready-pr");
+  assert.equal(review.proof.gate.reviewDecision, "REVIEW_REQUIRED");
+
+  const rebase = commandFixture([
+    [GLAB_MR, [ok(mergeRequestBody({ detailed_merge_status: "need_rebase" }))]],
+    NO_DISCUSSIONS,
+  ]);
+  const behind = singlePr((await watchMr(rebase.run)).verdict);
+  assert.equal(behind.kind, "ready-pr");
+  assert.equal(behind.proof.ci.github.mergeStateStatus, "BEHIND");
+});
+
 test("an undocumented detailed_merge_status fails closed", async () => {
   const fixture = commandFixture([
     [
@@ -602,7 +799,7 @@ test("status-only single mode returns STATUS", async () => {
   assert.equal(verdict.exitCode, 0);
   const [row] = verdict.rows;
   assert.equal(row.kind, "open");
-  assert.equal(row.ci.source, "gitlab-head-pipeline");
+  assert.equal(row.ci.source, "gitlab-merge-request");
 });
 
 test("the current-branch merge request resolves through glab mr view", async () => {

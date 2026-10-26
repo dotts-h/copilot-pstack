@@ -88,7 +88,7 @@ export type Check =
 export type FailedCheck = Extract<Check, { readonly kind: "failed" }>;
 export type PendingCheck = Extract<Check, { readonly kind: "pending" }>;
 export interface CheckRead {
-  readonly source: "gh-pr-checks" | "graphql-rollup" | "gitlab-head-pipeline";
+  readonly source: "gh-pr-checks" | "graphql-rollup" | "gitlab-merge-request";
   readonly checks: NonEmpty<Check>;
 }
 export interface CommitRollup {
@@ -427,6 +427,7 @@ export type HeadPipeline =
 export interface MergeRequestRead {
   readonly facts: PullRequestFacts;
   readonly pipeline: HeadPipeline;
+  readonly mergeCheck: FailedCheck | PendingCheck | null;
 }
 export type GitLabThread = ReviewThread & {
   readonly isBugbot: false;

@@ -20,33 +20,49 @@ const MR_STATES = {
   merged: "MERGED",
 } as const satisfies Record<string, T.PullRequestFacts["state"]>;
 const MERGE_STATUS = {
-  mergeable: { state: "CLEAN", review: null },
-  conflict: { state: "DIRTY", review: null },
-  need_rebase: { state: "BEHIND", review: null },
-  draft_status: { state: "DRAFT", review: null },
-  not_approved: { state: "BLOCKED", review: "REVIEW_REQUIRED" },
-  requested_changes: { state: "BLOCKED", review: "CHANGES_REQUESTED" },
-  discussions_not_resolved: { state: "BLOCKED", review: null },
-  ci_must_pass: { state: "BLOCKED", review: null },
-  ci_still_running: { state: "BLOCKED", review: null },
-  status_checks_must_pass: { state: "BLOCKED", review: null },
-  commits_status: { state: "BLOCKED", review: null },
-  security_policy_pipeline_check: { state: "BLOCKED", review: null },
-  security_policy_violations: { state: "BLOCKED", review: null },
-  merge_request_blocked: { state: "BLOCKED", review: null },
-  jira_association_missing: { state: "BLOCKED", review: null },
-  title_regex: { state: "BLOCKED", review: null },
-  locked_paths: { state: "BLOCKED", review: null },
-  locked_lfs_files: { state: "BLOCKED", review: null },
-  merge_time: { state: "BLOCKED", review: null },
-  not_open: { state: "UNKNOWN", review: null },
-  unchecked: { state: "UNKNOWN", review: null },
-  checking: { state: "UNKNOWN", review: null },
-  preparing: { state: "UNKNOWN", review: null },
-  approvals_syncing: { state: "UNKNOWN", review: null },
+  mergeable: { state: "CLEAN", review: null, check: null },
+  conflict: { state: "DIRTY", review: null, check: null },
+  need_rebase: { state: "BEHIND", review: null, check: null },
+  draft_status: { state: "DRAFT", review: null, check: null },
+  not_approved: { state: "BLOCKED", review: "REVIEW_REQUIRED", check: null },
+  requested_changes: {
+    state: "BLOCKED",
+    review: "CHANGES_REQUESTED",
+    check: null,
+  },
+  discussions_not_resolved: { state: "BLOCKED", review: null, check: "failed" },
+  ci_must_pass: { state: "BLOCKED", review: null, check: "failed" },
+  ci_still_running: { state: "BLOCKED", review: null, check: "pending" },
+  status_checks_must_pass: { state: "BLOCKED", review: null, check: "failed" },
+  commits_status: { state: "BLOCKED", review: null, check: "failed" },
+  security_policy_pipeline_check: {
+    state: "BLOCKED",
+    review: null,
+    check: "failed",
+  },
+  security_policy_violations: {
+    state: "BLOCKED",
+    review: null,
+    check: "failed",
+  },
+  merge_request_blocked: { state: "BLOCKED", review: null, check: "failed" },
+  jira_association_missing: { state: "BLOCKED", review: null, check: "failed" },
+  title_regex: { state: "BLOCKED", review: null, check: "failed" },
+  locked_paths: { state: "BLOCKED", review: null, check: "failed" },
+  locked_lfs_files: { state: "BLOCKED", review: null, check: "failed" },
+  merge_time: { state: "BLOCKED", review: null, check: "failed" },
+  not_open: { state: "UNKNOWN", review: null, check: "pending" },
+  unchecked: { state: "UNKNOWN", review: null, check: "pending" },
+  checking: { state: "UNKNOWN", review: null, check: "pending" },
+  preparing: { state: "UNKNOWN", review: null, check: "pending" },
+  approvals_syncing: { state: "UNKNOWN", review: null, check: "pending" },
 } as const satisfies Record<
   string,
-  { readonly state: T.MergeStateStatus; readonly review: T.ReviewDecision }
+  {
+    readonly state: T.MergeStateStatus;
+    readonly review: T.ReviewDecision;
+    readonly check: "pending" | "failed" | null;
+  }
 >;
 const PIPELINE_STATUS = {
   created: "pending",
@@ -171,13 +187,25 @@ function parseMergeRequest(
     missing("merge request.draft", object.draft);
   if (typeof object.has_conflicts !== "boolean")
     missing("merge request.has_conflicts", object.has_conflicts);
+  const status = string(
+    object.detailed_merge_status,
+    "merge request.detailed_merge_status"
+  );
   const row =
-    lookup(MERGE_STATUS, object.detailed_merge_status) ??
-    missing(
-      "merge request.detailed_merge_status",
-      object.detailed_merge_status
-    );
+    lookup(MERGE_STATUS, status) ??
+    missing("merge request.detailed_merge_status", status);
   const sha = optionalString(object.sha, "merge request.sha");
+  const mergeCheck =
+    row.check === null
+      ? null
+      : {
+          kind: row.check,
+          name: "detailed_merge_status",
+          reportedState: status.toUpperCase(),
+          description: "",
+          link: string(object.web_url, "merge request.web_url"),
+          workflow: "",
+        };
   return {
     facts: {
       context,
@@ -199,6 +227,7 @@ function parseMergeRequest(
       isDraft: object.draft,
     },
     pipeline: parseHeadPipeline(object.head_pipeline, context, sha),
+    mergeCheck,
   };
 }
 function parseNote(note: Record<string, unknown>): T.ReviewComment {
