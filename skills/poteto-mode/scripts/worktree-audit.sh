@@ -119,31 +119,29 @@ transcripts_dir() {
 }
 
 chat_patterns() {
-	local spell json flipped
-	spell=$(printf '%s' "$1" | tr '\\' '/')
-	json=$(printf '%s' "$spell" | sed 's#/#\\\\#g')
-	printf '%s\n' \
-		"$spell/" \
-		"$spell\"" \
-		"$spell'" \
-		"$spell\\\"" \
-		"$json\\\\" \
-		"$json\"" \
-		"$json'" \
-		"$json\\\""
-	if [ "${2-}" = once ]; then
-		return
-	fi
-	case $spell in
-	[A-Za-z]:*)
-		flipped=$(printf '%s' "${spell%"${spell#?}"}" | tr 'A-Za-z' 'a-zA-Z')${spell#?}
-		chat_patterns "$flipped" once
-		;;
+	local base extra spell json
+	base=$(printf '%s' "$1" | tr '\\' '/')
+	extra=$base
+	case $base in
+	[A-Za-z]:*) extra=$(printf '%s' "${base:0:1}" | tr 'A-Za-z' 'a-zA-Z')${base:1} ;;
 	esac
+	for spell in "$base" "$extra"; do
+		json=$(printf '%s' "$spell" | sed 's#/#\\\\#g')
+		printf '%s\n' \
+			"$spell/" \
+			"$spell\"" \
+			"$spell'" \
+			"$spell\\\"" \
+			"$json\\\\" \
+			"$json\"" \
+			"$json'" \
+			"$json\\\""
+		[ "$spell" = "$extra" ] && break
+	done
 }
 
 newest_chat_ts() {
-	local needle dir ts pat
+	local needle dir ts
 	needle=$1
 	shift
 	for dir do
@@ -151,9 +149,7 @@ newest_chat_ts() {
 		[ -d "$dir" ] && set -- "$@" "$dir"
 	done
 	[ $# -gt 0 ] || { printf '%s\n' 0; return; }
-	pat=$(mktemp)
-	chat_patterns "$needle" > "$pat"
-	if ts=$(rg --no-config --no-filename -N -F -f "$pat" -- "$@" 2>/dev/null | awk '
+	if ts=$(chat_patterns "$needle" | rg --no-config --no-filename -N -F -f - -- "$@" 2>/dev/null | awk '
 		function epoch(t,   y, m, d, hh, mm, ss, era, yoe, doy, doe) {
 			y = substr(t, 1, 4) + 0
 			m = substr(t, 6, 2) + 0
@@ -188,11 +184,9 @@ newest_chat_ts() {
 			if (unknown) print "?"
 			else printf "%.0f\n", best
 		}'
-		exit $(( ${PIPESTATUS[0]} > 1 || ${PIPESTATUS[1]} != 0 ))) && [ -n "$ts" ]; then
-		rm -f "$pat"
+		exit $(( ${PIPESTATUS[1]} > 1 || ${PIPESTATUS[2]} != 0 ))) && [ -n "$ts" ]; then
 		printf '%s\n' "$ts"
 	else
-		rm -f "$pat"
 		printf '%s\n' '?'
 	fi
 }

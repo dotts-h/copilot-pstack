@@ -279,11 +279,11 @@ json_cwd() {
 }
 
 chat_at() {
-	dir=$tmp/chat-$3
-	rm -rf "$dir"
-	mkdir -p "$dir"
-	printf '%s\n' "$2" > "$dir/events.jsonl"
-	newest_chat_ts "$1" "$dir"
+	chat_dir=$tmp/chat-$3
+	rm -rf "$chat_dir"
+	mkdir -p "$chat_dir"
+	printf '%s\n' "$2" > "$chat_dir/events.jsonl"
+	newest_chat_ts "$1" "$chat_dir"
 }
 
 base=$(chat_at 'C:/Users/ada/repo' "$(json_cwd "$fresh_ts" 'C:/Users/ada/repo')" fwd)
