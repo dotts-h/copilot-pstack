@@ -174,17 +174,20 @@ function line_ts(s,   line, t, e) {
 }
 '
 
+session_meta=workspace.yaml
+session_events=events.jsonl
+
 session_dirs() {
 	local root child
 	root=$1
 	[ -d "$root" ] || return 0
-	if [ -f "$root/events.jsonl" ] || [ -f "$root/workspace.yaml" ]; then
+	if [ -f "$root/$session_events" ] || [ -f "$root/$session_meta" ]; then
 		printf '%s\n' "$root"
 		return 0
 	fi
 	for child in "$root"/*; do
 		[ -d "$child" ] || continue
-		if [ -f "$child/events.jsonl" ] || [ -f "$child/workspace.yaml" ]; then
+		if [ -f "$child/$session_events" ] || [ -f "$child/$session_meta" ]; then
 			printf '%s\n' "$child"
 		fi
 	done
@@ -195,8 +198,7 @@ mention_ts() {
 	needle=$1
 	shift
 	[ $# -gt 0 ] || { printf '%s\n' 0; return 0; }
-	# Quoted cwd lines in workspace.yaml have no timestamp and would mark this scan unknown.
-	if ts=$(chat_patterns "$needle" | rg --no-config --no-filename -N -F -g '!workspace.yaml' -f - -- "$@" 2>/dev/null | awk "$chat_ts_awk"'
+	if ts=$(chat_patterns "$needle" | rg --no-config --no-filename -N -F -g "!$session_meta" -f - -- "$@" 2>/dev/null | awk "$chat_ts_awk"'
 		{
 			sub(/\r$/, "")
 			line = line_ts($0)
@@ -221,13 +223,13 @@ bound_session_ts() {
 	session_dir=$2
 	yaml_present=0
 	events_present=0
-	if [ -f "$session_dir/workspace.yaml" ]; then
+	if [ -f "$session_dir/$session_meta" ]; then
 		yaml_present=1
 	fi
-	if [ -f "$session_dir/events.jsonl" ]; then
+	if [ -f "$session_dir/$session_events" ]; then
 		events_present=1
 	fi
-	needle="$needle" session_dir="$session_dir" yaml_present="$yaml_present" events_present="$events_present" awk "$chat_ts_awk"'
+	needle="$needle" session_dir="$session_dir" session_meta="$session_meta" session_events="$session_events" yaml_present="$yaml_present" events_present="$events_present" awk "$chat_ts_awk"'
 		function norm(p) {
 			gsub(/\\/, "/", p)
 			gsub(/\/+/, "/", p)
@@ -261,7 +263,7 @@ bound_session_ts() {
 			bad = 0
 			best = -1
 			if (ENVIRON["yaml_present"] == "1") {
-				yaml = dir "/workspace.yaml"
+				yaml = dir "/" ENVIRON["session_meta"]
 				while ((getline line < yaml) > 0) {
 					val = yaml_cwd(line)
 					if (val != "" && binds(val)) bound = 1
@@ -269,7 +271,7 @@ bound_session_ts() {
 				close(yaml)
 			}
 			if (ENVIRON["events_present"] == "1") {
-				events = dir "/events.jsonl"
+				events = dir "/" ENVIRON["session_events"]
 				while ((getline line < events) > 0) {
 					sub(/\r$/, "", line)
 					if (line ~ /"type"[ \t]*:[ \t]*"session.start"/ && match(line, /"cwd"[ \t]*:[ \t]*"/)) {
