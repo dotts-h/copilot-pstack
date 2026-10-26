@@ -274,5 +274,47 @@ audit
 expect "$shipped" PR '#7/merged-stale' "a stale GitLab merged request still read as merged"
 expect "$shipped" BUCKET review "a stale GitLab merged request was a cleanup candidate"
 
+json_cwd() {
+	printf '{"timestamp":"%s","data":{"context":{"cwd":"%s"}}}' "$1" "$2"
+}
+
+chat_at() {
+	dir=$tmp/chat-$3
+	rm -rf "$dir"
+	mkdir -p "$dir"
+	printf '%s\n' "$2" > "$dir/events.jsonl"
+	newest_chat_ts "$1" "$dir"
+}
+
+base=$(chat_at 'C:/Users/ada/repo' "$(json_cwd "$fresh_ts" 'C:/Users/ada/repo')" fwd)
+[ "$base" != 0 ] && [ "$base" != '?' ] || fail "forward-slash cwd was not a chat: [$base]"
+got=$(chat_at 'C:/Users/ada/repo' "$(json_cwd "$fresh_ts" 'C:\\Users\\ada\\repo')" win)
+[ "$got" = "$base" ] || fail "windows json cwd got [$got] want [$base]"
+got=$(chat_at 'C:/Users/ada/repo' "$(json_cwd "$fresh_ts" 'c:\\Users\\ada\\repo')" case)
+[ "$got" = "$base" ] || fail "drive-letter case got [$got] want [$base]"
+got=$(chat_at '/Users/ada/repo' "$(json_cwd "$fresh_ts" '/Users/ada/repo')" mac)
+[ "$got" = "$base" ] || fail "mac cwd got [$got] want [$base]"
+got=$(chat_at '/Users/ada/repo' "$(json_cwd "$fresh_ts" '\\Users\\ada\\repo')" macbs)
+[ "$got" = "$base" ] || fail "mac backslash cwd got [$got] want [$base]"
+got=$(chat_at 'C:\Users\ada\repo' "$(json_cwd "$fresh_ts" 'C:\\Users\\ada\\repo')" needle)
+[ "$got" = "$base" ] || fail "backslash needle got [$got] want [$base]"
+got=$(chat_at '/Users/ada/repo' "$(json_cwd "$fresh_ts" '/Users/ada/repo-extra')" sib)
+[ "$got" = 0 ] || fail "sibling cwd counted: [$got]"
+yamldir=$tmp/chat-yaml
+rm -rf "$yamldir"
+mkdir -p "$yamldir"
+printf '%s\n' 'cwd: C:\Users\ada\repo' > "$yamldir/workspace.yaml"
+got=$(newest_chat_ts 'C:/Users/ada/repo' "$yamldir")
+[ "$got" = 0 ] || fail "yaml-only cwd counted: [$got]"
+printf '%s\n' "$(json_cwd "$fresh_ts" 'C:\\Users\\ada\\repo')" > "$yamldir/events.jsonl"
+got=$(newest_chat_ts 'C:/Users/ada/repo' "$yamldir")
+[ "$got" = "$base" ] || fail "yaml beside a json cwd got [$got] want [$base]"
+
+baseline
+json_path=$(printf '%s' "$feature" | sed 's#/#\\\\#g')
+put "$session" "$(json_cwd "$fresh_ts" "$json_path")"
+audit
+expect "$feature" BUCKET verify-recent-chat "json-escaped cwd did not count"
+
 [ "$failed" -eq 0 ] || { printf '%s\n' "$failed worktree-audit checks failed" >&2; exit 1; }
 printf '%s\n' 'worktree-audit fixtures passed'
