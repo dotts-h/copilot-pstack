@@ -159,6 +159,10 @@ glab_row() {
 	printf '{"iid":%s,"state":"%s","draft":false,"source_branch":"shipped","sha":"%s"}' "$1" "$2" "$3"
 }
 
+origin_row() {
+	printf '{"number":%s,"status":"%s","headRef":"shipped","headSha":"%s"}' "$1" "$2" "$3"
+}
+
 session="$tmp/home/.copilot/session-state/abc/events.jsonl"
 fresh_ts=$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')
 stale_ts='2020-01-01T12:00:00.000Z'
@@ -236,6 +240,12 @@ stub gh 1
 audit
 expect "$landed" PR '?' "unreadable PR lists read as no PR"
 expect "$landed" BUCKET blocked "unreadable PR lists left a cleanup candidate"
+
+baseline
+stub origin 0 "[$(origin_row 9 merged "$sha_b")]"
+audit
+expect "$shipped" PR '#9/merged' "origin merged change at HEAD"
+expect "$shipped" BUCKET safe "origin merged change at HEAD was not safe"
 
 baseline
 stub glab 0 "[$(glab_row 7 merged "$sha_b")]"
