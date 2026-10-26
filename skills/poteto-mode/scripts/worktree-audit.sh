@@ -110,7 +110,12 @@ audit_bucket() {
 }
 
 transcripts_dir() {
-	printf '%s/.cursor/projects/%s/agent-transcripts\n' "$HOME" "$(printf '%s' "$1" | sed 's#^/##; s#/#-#g')"
+	local path
+	path=$1
+	case $path in
+	[A-Za-z]:*) path=$(printf '%s' "${path:0:1}" | tr '[:upper:]' '[:lower:]')$(printf '%s' "${path:2}" | tr '\\' /) ;;
+	esac
+	printf '%s/.cursor/projects/%s/agent-transcripts\n' "$HOME" "$(printf '%s' "$path" | sed 's#^/##; s#/#-#g')"
 }
 
 newest_chat_ts() {
