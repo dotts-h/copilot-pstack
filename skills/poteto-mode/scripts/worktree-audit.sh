@@ -22,8 +22,7 @@ pr_filter() {
 	printf '[.[] | {number: .%s, state: (if .draft == true then "draft" elif .%s == "opened" then "open" else .%s end), head: .%s, headSha: .%s}]' "$1" "$2" "$2" "$3" "$4"
 }
 
-# origin pr list has no head SHA field, so its merged rows are safe only by ancestry.
-origin_pr_fields='number status headRef none'
+origin_pr_fields='number status headRef headSha'
 glab_mr_fields='iid state source_branch sha'
 gh_pr_fields='number state headRefName headRefOid'
 glab_mr_filter=$(pr_filter $glab_mr_fields)
@@ -221,7 +220,7 @@ case $(remote_host "$(git remote get-url origin 2>/dev/null)") in
 *) gitlab=no ;;
 esac
 prs=$( { command -v origin >/dev/null 2>&1 \
-		&& raw=$(origin pr list --author "@me" --state all --limit 1000 --json number,status,headRef 2>/dev/null) \
+		&& raw=$(origin pr list --author "@me" --state all --limit 1000 --json number,status,headRef,headSha 2>/dev/null) \
 		&& printf '%s' "$raw" | forge_rows "$json" $origin_pr_fields; } \
 	|| { [ "$gitlab" = yes ] \
 		&& raw=$(glab mr list --all --per-page 100 --output json 2>/dev/null) \
