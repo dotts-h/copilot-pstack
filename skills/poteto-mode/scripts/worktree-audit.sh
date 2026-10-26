@@ -3,8 +3,9 @@
 # state, uncommitted work, remote/PR state, and the most recent chat that
 # operated in it. Emits a table sorted by size with a suggested bucket. Never
 # deletes anything; deletion stays a human-gated step in the playbook.
-# A ? cell is an observation that failed (git status, every PR source, or a
-# chat line with no readable event time). Its row is blocked, never safe.
+# A ? cell is an observation that failed (git status, every PR source, the
+# transcript search, or a chat line with no readable event time). Its row is
+# blocked, never safe.
 #
 # Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
 #   repo-path defaults to the current repo.
@@ -121,7 +122,6 @@ newest_chat_ts() {
 		[ -d "$dir" ] && set -- "$@" "$dir"
 	done
 	[ $# -gt 0 ] || { printf '%s\n' 0; return; }
-	# A user ripgrep config (max-columns, globs, max-count) could hide or truncate matches.
 	if ts=$(rg --no-config --no-filename -N -F \
 		-e "$needle/" -e "$needle\"" -e "$needle'" -e "$needle\\\"" -- "$@" 2>/dev/null | awk '
 		function epoch(t,   y, m, d, hh, mm, ss, era, yoe, doy, doe) {
