@@ -305,16 +305,100 @@ rm -rf "$yamldir"
 mkdir -p "$yamldir"
 printf '%s\n' 'cwd: C:\Users\ada\repo' > "$yamldir/workspace.yaml"
 got=$(newest_chat_ts 'C:/Users/ada/repo' "$yamldir")
-[ "$got" = 0 ] || fail "yaml-only cwd counted: [$got]"
+[ "$got" = '?' ] || fail "yaml-only cwd read as no activity: [$got]"
 printf '%s\n' "$(json_cwd "$fresh_ts" 'C:\\Users\\ada\\repo')" > "$yamldir/events.jsonl"
 got=$(newest_chat_ts 'C:/Users/ada/repo' "$yamldir")
 [ "$got" = "$base" ] || fail "yaml beside a json cwd got [$got] want [$base]"
+
+user_message() {
+	printf '{"type":"user.message","timestamp":"%s","data":{"content":"Continue working on the current task."}}' "$1"
+}
+
+session_start() {
+	printf '{"type":"session.start","timestamp":"%s","data":{"context":{"cwd":"%s"}}}' "$1" "$2"
+}
+
+bound=$tmp/chat-bound
+rm -rf "$bound"
+mkdir -p "$bound"
+printf '%s\n' "$(session_start "$stale_ts" /tmp/example-worktree)" "$(user_message "$fresh_ts")" > "$bound/events.jsonl"
+got=$(newest_chat_ts /tmp/example-worktree "$bound")
+[ "$got" = "$base" ] || fail "pathless message after a cwd binding got [$got] want [$base]"
+
+child=$tmp/chat-child/abc
+rm -rf "$tmp/chat-child"
+mkdir -p "$child"
+cp "$bound/events.jsonl" "$child/events.jsonl"
+got=$(newest_chat_ts /tmp/example-worktree "$tmp/chat-child")
+[ "$got" = "$base" ] || fail "pathless message in a session directory got [$got] want [$base]"
+
+yamlfresh=$tmp/chat-yaml-fresh
+rm -rf "$yamlfresh"
+mkdir -p "$yamlfresh"
+printf '%s\n' 'cwd: /tmp/example-worktree' > "$yamlfresh/workspace.yaml"
+printf '%s\n' "$(user_message "$fresh_ts")" > "$yamlfresh/events.jsonl"
+got=$(newest_chat_ts /tmp/example-worktree "$yamlfresh")
+[ "$got" = "$base" ] || fail "pathless message after an unquoted yaml cwd got [$got] want [$base]"
+
+yamlwin=$tmp/chat-yaml-win
+rm -rf "$yamlwin"
+mkdir -p "$yamlwin"
+printf '%s\n' 'cwd: C:\Users\ada\repo' > "$yamlwin/workspace.yaml"
+printf '%s\n' "$(user_message "$fresh_ts")" > "$yamlwin/events.jsonl"
+got=$(newest_chat_ts 'C:/Users/ada/repo' "$yamlwin")
+[ "$got" = "$base" ] || fail "pathless message after a windows yaml cwd got [$got] want [$base]"
+
+yamlq=$tmp/chat-yaml-quoted
+rm -rf "$yamlq"
+mkdir -p "$yamlq"
+printf '%s\n' 'cwd: "/tmp/example-worktree"' > "$yamlq/workspace.yaml"
+printf '%s\n' "$(user_message "$fresh_ts")" > "$yamlq/events.jsonl"
+got=$(newest_chat_ts /tmp/example-worktree "$yamlq")
+[ "$got" = "$base" ] || fail "pathless message after a quoted yaml cwd got [$got] want [$base]"
+
+yamlonlyq=$tmp/chat-yaml-quoted-only
+rm -rf "$yamlonlyq"
+mkdir -p "$yamlonlyq"
+printf '%s\n' 'cwd: "/tmp/example-worktree"' > "$yamlonlyq/workspace.yaml"
+got=$(newest_chat_ts /tmp/example-worktree "$yamlonlyq")
+[ "$got" = '?' ] || fail "quoted yaml with no events read as no activity: [$got]"
+
+nested=$tmp/chat-nested
+rm -rf "$nested"
+mkdir -p "$nested"
+printf '%s\n' "$(session_start "$stale_ts" /tmp/example-worktree/src)" "$(user_message "$fresh_ts")" > "$nested/events.jsonl"
+got=$(newest_chat_ts /tmp/example-worktree "$nested")
+[ "$got" = "$base" ] || fail "pathless message after a nested cwd got [$got] want [$base]"
+
+toolonly=$tmp/chat-tool
+rm -rf "$toolonly"
+mkdir -p "$toolonly"
+tool_line=$(event 'ls /tmp/example-worktree' "$stale_ts")
+printf '%s\n' "$tool_line" "$(user_message "$fresh_ts")" > "$toolonly/events.jsonl"
+want_tool=$(chat_at /tmp/example-worktree "$tool_line" toolref)
+got=$(newest_chat_ts /tmp/example-worktree "$toolonly")
+[ "$got" = "$want_tool" ] || fail "a tool path adopted a later pathless message: [$got] want [$want_tool]"
 
 baseline
 json_path=$(printf '%s' "$feature" | sed 's#/#\\\\#g')
 put "$session" "$(json_cwd "$fresh_ts" "$json_path")"
 audit
 expect "$feature" BUCKET verify-recent-chat "json-escaped cwd did not count"
+
+baseline
+mkdir -p "$(dirname -- "$session")"
+printf '%s\n' "$(session_start "$stale_ts" "$landed")" "$(user_message "$fresh_ts")" > "$session"
+audit
+expect "$landed" LAST_CHAT "${fresh_ts%%T*}" "a fresh pathless message kept the old cwd day"
+expect "$landed" BUCKET verify-recent-chat "a fresh pathless message left a merged worktree safe"
+
+baseline
+mkdir -p "$(dirname -- "$session")"
+printf '%s\n' "cwd: $landed" > "$(dirname -- "$session")/workspace.yaml"
+printf '%s\n' "$(user_message "$fresh_ts")" > "$session"
+audit
+expect "$landed" LAST_CHAT "${fresh_ts%%T*}" "a yaml cwd kept no chat day"
+expect "$landed" BUCKET verify-recent-chat "a fresh message after a yaml cwd left a merged worktree safe"
 
 [ "$failed" -eq 0 ] || { printf '%s\n' "$failed worktree-audit checks failed" >&2; exit 1; }
 printf '%s\n' 'worktree-audit fixtures passed'

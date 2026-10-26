@@ -4,7 +4,8 @@
 # operated in it. Emits a table sorted by size with a suggested bucket. Never
 # deletes anything; deletion stays a human-gated step in the playbook.
 # A ? cell is an observation that failed (git status, every PR source, the
-# transcript search, or a chat line with no readable event time). Its row is
+# transcript search, a chat line with no readable event time, or a Copilot
+# session bound to the worktree with no readable event time). Its row is
 # blocked, never safe.
 #
 # Usage: worktree-audit.sh [-b|--base <ref>] [repo-path]
@@ -140,43 +141,67 @@ chat_patterns() {
 	done
 }
 
-newest_chat_ts() {
-	local needle dir ts
+chat_ts_awk='
+function epoch(t,   y, m, d, hh, mm, ss, era, yoe, doy, doe) {
+	y = substr(t, 1, 4) + 0
+	m = substr(t, 6, 2) + 0
+	d = substr(t, 9, 2) + 0
+	hh = substr(t, 12, 2) + 0
+	mm = substr(t, 15, 2) + 0
+	ss = substr(t, 18, 2) + 0
+	if (m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 60) return -1
+	if (m <= 2) y--
+	era = int(y / 400)
+	yoe = y - era * 400
+	doy = int((153 * (m > 2 ? m - 3 : m + 9) + 2) / 5) + d - 1
+	doe = yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+	return (era * 146097 + doe - 719468) * 86400 + hh * 3600 + mm * 60 + ss
+}
+function shaped_ts(s) {
+	return match(s, /"timestamp"[ \t]*:[ \t]*"[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\.[0-9]+)?Z"/)
+}
+function line_ts(s,   line, t, e) {
+	line = -1
+	while (shaped_ts(s)) {
+		t = substr(s, RSTART, RLENGTH)
+		sub(/^"timestamp"[ \t]*:[ \t]*"/, "", t)
+		e = epoch(t)
+		if (e < 0) return -1
+		if (e > line) line = e
+		s = substr(s, RSTART + RLENGTH)
+	}
+	return line
+}
+'
+
+session_meta=workspace.yaml
+session_events=events.jsonl
+
+session_dirs() {
+	local root child
+	root=$1
+	[ -d "$root" ] || return 0
+	if [ -f "$root/$session_events" ] || [ -f "$root/$session_meta" ]; then
+		printf '%s\n' "$root"
+		return 0
+	fi
+	for child in "$root"/*; do
+		[ -d "$child" ] || continue
+		if [ -f "$child/$session_events" ] || [ -f "$child/$session_meta" ]; then
+			printf '%s\n' "$child"
+		fi
+	done
+}
+
+mention_ts() {
+	local needle ts
 	needle=$1
 	shift
-	for dir do
-		shift
-		[ -d "$dir" ] && set -- "$@" "$dir"
-	done
-	[ $# -gt 0 ] || { printf '%s\n' 0; return; }
-	if ts=$(chat_patterns "$needle" | rg --no-config --no-filename -N -F -f - -- "$@" 2>/dev/null | awk '
-		function epoch(t,   y, m, d, hh, mm, ss, era, yoe, doy, doe) {
-			y = substr(t, 1, 4) + 0
-			m = substr(t, 6, 2) + 0
-			d = substr(t, 9, 2) + 0
-			hh = substr(t, 12, 2) + 0
-			mm = substr(t, 15, 2) + 0
-			ss = substr(t, 18, 2) + 0
-			if (m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 60) return -1
-			if (m <= 2) y--
-			era = int(y / 400)
-			yoe = y - era * 400
-			doy = int((153 * (m > 2 ? m - 3 : m + 9) + 2) / 5) + d - 1
-			doe = yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
-			return (era * 146097 + doe - 719468) * 86400 + hh * 3600 + mm * 60 + ss
-		}
+	[ $# -gt 0 ] || { printf '%s\n' 0; return 0; }
+	if ts=$(chat_patterns "$needle" | rg --no-config --no-filename -N -F -g "!$session_meta" -f - -- "$@" 2>/dev/null | awk "$chat_ts_awk"'
 		{
 			sub(/\r$/, "")
-			line = -1
-			s = $0
-			while (match(s, /"timestamp"[ \t]*:[ \t]*"[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\.[0-9]+)?Z"/)) {
-				t = substr(s, RSTART, RLENGTH)
-				sub(/^"timestamp"[ \t]*:[ \t]*"/, "", t)
-				e = epoch(t)
-				if (e < 0) { line = -1; break }
-				if (e > line) line = e
-				s = substr(s, RSTART + RLENGTH)
-			}
+			line = line_ts($0)
 			if (line < 0) unknown = 1
 			else if (line > best) best = line
 		}
@@ -184,10 +209,132 @@ newest_chat_ts() {
 			if (unknown) print "?"
 			else printf "%.0f\n", best
 		}'
-		exit $(( ${PIPESTATUS[1]} > 1 || ${PIPESTATUS[2]} != 0 ))) && [ -n "$ts" ]; then
+		exit $(( ${PIPESTATUS[1]} > 1 || ${PIPESTATUS[2]} != 0 ))); then
+		[ -n "$ts" ] || ts='?'
 		printf '%s\n' "$ts"
 	else
 		printf '%s\n' '?'
+	fi
+}
+
+bound_session_ts() {
+	local needle session_dir yaml_present events_present
+	needle=$1
+	session_dir=$2
+	yaml_present=0
+	events_present=0
+	if [ -f "$session_dir/$session_meta" ]; then
+		yaml_present=1
+	fi
+	if [ -f "$session_dir/$session_events" ]; then
+		events_present=1
+	fi
+	needle="$needle" session_dir="$session_dir" session_meta="$session_meta" session_events="$session_events" yaml_present="$yaml_present" events_present="$events_present" awk "$chat_ts_awk"'
+		function norm(p) {
+			gsub(/\\/, "/", p)
+			gsub(/\/+/, "/", p)
+			sub(/\/$/, "", p)
+			if (p ~ /^[A-Za-z]:/) p = tolower(substr(p, 1, 1)) substr(p, 2)
+			return p
+		}
+		function binds(cand,   n) {
+			n = norm(cand)
+			if (n == needle) return 1
+			if (index(n, needle "/") == 1) return 1
+			return 0
+		}
+		function yaml_cwd(line,   val, n, q) {
+			sub(/\r$/, "", line)
+			if (!match(line, /^[ \t]*cwd:[ \t]*/)) return ""
+			val = substr(line, RSTART + RLENGTH)
+			sub(/^[ \t]+/, "", val)
+			sub(/[ \t]+$/, "", val)
+			n = length(val)
+			if (n < 2) return val
+			q = sprintf("%c", 39)
+			if ((substr(val, 1, 1) == "\"" && substr(val, n, 1) == "\"") || (substr(val, 1, 1) == q && substr(val, n, 1) == q))
+				val = substr(val, 2, n - 2)
+			return val
+		}
+		BEGIN {
+			needle = norm(ENVIRON["needle"])
+			dir = ENVIRON["session_dir"]
+			bound = 0
+			bad = 0
+			best = -1
+			if (ENVIRON["yaml_present"] == "1") {
+				yaml = dir "/" ENVIRON["session_meta"]
+				while ((getline line < yaml) > 0) {
+					val = yaml_cwd(line)
+					if (val != "" && binds(val)) bound = 1
+				}
+				close(yaml)
+			}
+			if (ENVIRON["events_present"] == "1") {
+				events = dir "/" ENVIRON["session_events"]
+				while ((getline line < events) > 0) {
+					sub(/\r$/, "", line)
+					if (line ~ /"type"[ \t]*:[ \t]*"session.start"/ && match(line, /"cwd"[ \t]*:[ \t]*"/)) {
+						val = substr(line, RSTART + RLENGTH)
+						sub(/".*/, "", val)
+						if (binds(val)) bound = 1
+					}
+					e = line_ts(line)
+					if (e >= 0) {
+						if (e > best) best = e
+					} else if (shaped_ts(line)) {
+						bad = 1
+					}
+				}
+				close(events)
+			}
+			if (!bound) exit 0
+			if (bad || best < 0) print "?"
+			else printf "%.0f\n", best
+			exit 0
+		}'
+}
+
+newest_chat_ts() {
+	local needle dir mentions sessions session contrib sess_best sess_q
+	needle=$1
+	shift
+	for dir do
+		shift
+		[ -d "$dir" ] && set -- "$@" "$dir"
+	done
+	[ $# -gt 0 ] || { printf '%s\n' 0; return 0; }
+	mentions=$(mention_ts "$needle" "$@") || mentions='?'
+	sess_best=0
+	sess_q=0
+	for dir do
+		while IFS= read -r session; do
+			[ -n "$session" ] || continue
+			contrib=$(bound_session_ts "$needle" "$session") || contrib='?'
+			case $contrib in
+			'') ;;
+			'?') sess_q=1 ;;
+			*)
+				if [ "$contrib" -gt "$sess_best" ]; then
+					sess_best=$contrib
+				fi
+				;;
+			esac
+		done < <(session_dirs "$dir")
+	done
+	if [ "$sess_q" -eq 1 ]; then
+		sessions='?'
+	else
+		sessions=$sess_best
+	fi
+	if [ "$mentions" = '?' ] || [ "$sessions" = '?' ]; then
+		printf '%s\n' '?'
+		return 0
+	fi
+	if [ "$mentions" -gt "$sessions" ]; then
+		printf '%s\n' "$mentions"
+	else
+		printf '%s\n' "$sessions"
 	fi
 }
 
