@@ -11,6 +11,7 @@ import {
   GLAB_DISCUSSIONS,
   GLAB_MR,
   commandFixture,
+  glabDiscussions,
   mergeRequestBody,
   ok,
   pipelineBody,
@@ -204,6 +205,7 @@ test("a clean merge request is READY", async () => {
         ]),
       ],
     ],
+    [glabDiscussions(2), [ok([])]],
   ]);
   const { verdict } = await watchMr(fixture.run);
   const pr = singlePr(verdict);
@@ -217,7 +219,11 @@ test("a clean merge request is READY", async () => {
     })),
     [{ kind: "passed", name: "pipeline", reportedState: "SUCCESS" }]
   );
-  assert.deepEqual(fixture.calls, [GLAB_MR, GLAB_DISCUSSIONS]);
+  assert.deepEqual(fixture.calls, [
+    GLAB_MR,
+    GLAB_DISCUSSIONS,
+    glabDiscussions(2),
+  ]);
 });
 
 test("unresolved discussions are the review-threads blocker", async () => {
@@ -268,6 +274,7 @@ test("unresolved discussions are the review-threads blocker", async () => {
         ]),
       ],
     ],
+    [glabDiscussions(2), [ok([])]],
   ]);
   const { verdict } = await watchMr(fixture.run);
   const blocker = exitBlocker(verdict, 3);
@@ -309,6 +316,40 @@ test("unresolved discussions are the review-threads blocker", async () => {
       isBugbot: false,
       bugbotReviewPasses: 0,
     },
+  ]);
+});
+
+test("discussions are read page by page until an empty page", async () => {
+  const fixture = commandFixture([
+    [GLAB_MR, [ok(mergeRequestBody())]],
+    [
+      glabDiscussions(1),
+      [
+        ok(
+          Array.from({ length: 99 }, (_, index) =>
+            discussion(`disc-${index}`, [note({ id: index })])
+          )
+        ),
+      ],
+    ],
+    [
+      glabDiscussions(2),
+      [ok([discussion("disc-page-2", [note({ id: 99, resolved: false })])])],
+    ],
+    [glabDiscussions(3), [ok([])]],
+  ]);
+  const { verdict } = await watchMr(fixture.run);
+  const blocker = exitBlocker(verdict, 3);
+  assert.equal(blocker.kind, "review-threads");
+  assert.deepEqual(
+    blocker.threads.map((thread) => thread.id),
+    ["disc-page-2"]
+  );
+  assert.deepEqual(fixture.calls, [
+    GLAB_MR,
+    glabDiscussions(1),
+    glabDiscussions(2),
+    glabDiscussions(3),
   ]);
 });
 

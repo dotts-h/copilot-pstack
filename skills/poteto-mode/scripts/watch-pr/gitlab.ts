@@ -233,9 +233,11 @@ function isUnresolved(note: Record<string, unknown>): boolean {
     missing("discussion note.resolved", note.resolved);
   return !note.resolved;
 }
-function parseDiscussions(value: unknown): readonly T.GitLabThread[] {
+function parseDiscussions(
+  discussions: readonly unknown[]
+): readonly T.GitLabThread[] {
   const threads: T.GitLabThread[] = [];
-  for (const item of list(value, "discussions")) {
+  for (const item of discussions) {
     const discussion = record(item, "discussion");
     const notes = list(discussion.notes, "discussion.notes").map((note) =>
       record(note, "discussion note")
@@ -289,16 +291,29 @@ export class GlabGitLabReader implements T.GitLabReader {
   async unresolvedThreads(
     context: T.PrContext
   ): Promise<readonly T.GitLabThread[]> {
-    return parseDiscussions(
-      await runJson(
-        [
-          "glab",
-          "api",
-          `${mergeRequestPath(context)}/discussions`,
-          "--paginate",
-        ],
-        this.run
-      )
-    );
+    const discussions: unknown[] = [];
+    for (let page = 1; ; page += 1) {
+      const pageItems = list(
+        await runJson(
+          [
+            "glab",
+            "api",
+            `${mergeRequestPath(context)}/discussions`,
+            "--method",
+            "GET",
+            "--raw-field",
+            "per_page=100",
+            "--raw-field",
+            `page=${page}`,
+          ],
+          this.run
+        ),
+        "discussions"
+      );
+      // GitLab drops notes the token cannot read after paging, so only an empty page ends the list.
+      if (pageItems.length === 0) break;
+      discussions.push(...pageItems);
+    }
+    return parseDiscussions(discussions);
   }
 }

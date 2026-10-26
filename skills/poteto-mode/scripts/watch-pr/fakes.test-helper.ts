@@ -181,12 +181,21 @@ export const GLAB_MR = [
   "api",
   "projects/group%2Fsub%2Fproject/merge_requests/7",
 ] as const;
-export const GLAB_DISCUSSIONS = [
-  "glab",
-  "api",
-  "projects/group%2Fsub%2Fproject/merge_requests/7/discussions",
-  "--paginate",
-] as const;
+export function glabDiscussions(page: number): CommandEntry[0] {
+  return [
+    "glab",
+    "api",
+    "projects/group%2Fsub%2Fproject/merge_requests/7/discussions",
+    "--method",
+    "GET",
+    "--raw-field",
+    "per_page=100",
+    "--raw-field",
+    `page=${page}`,
+  ] as const;
+}
+
+export const GLAB_DISCUSSIONS = glabDiscussions(1);
 const GITLAB_HEAD = "0123456789abcdef0123456789abcdef01234567";
 
 export function pipelineBody(
