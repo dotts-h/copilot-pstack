@@ -47,6 +47,20 @@ else
 fi
 [ "$mapped" = "$want" ] || fail "glab map: $mapped"
 
+want_rows=$(printf 'feat\t7\tclosed\ta1\nwip\t8\tdraft\tb2\ndone\t9\tmerged\tc3\nopen\t10\topen\td4')
+gh_sample='[{"number":5,"state":"MERGED","headRefName":"shipped","headRefOid":"a1"},{"number":6,"state":"OPEN","headRefName":"shipped","headRefOid":"b2"}]'
+want_gh_rows=$(printf 'shipped\t5\tmerged\ta1\nshipped\t6\topen\tb2')
+for parser in jq node; do
+	command -v "$parser" >/dev/null 2>&1 || continue
+	got=$(printf '%s' "$sample" | forge_rows "$parser" $glab_mr_fields) || fail "$parser rejected the glab list"
+	[ "$got" = "$want_rows" ] || fail "$parser glab rows: $got"
+	got=$(printf '%s' "$gh_sample" | forge_rows "$parser" $gh_pr_fields) || fail "$parser rejected the gh list"
+	[ "$got" = "$want_gh_rows" ] || fail "$parser gh rows: $got"
+	if printf '{"a":{"iid":1,"state":"merged"}}' | forge_rows "$parser" $glab_mr_fields >/dev/null; then
+		fail "$parser read an object as a list"
+	fi
+done
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 root="$tmp/repo"
@@ -203,6 +217,7 @@ expect "$shipped" BUCKET safe "merged request at HEAD was not safe"
 commit_in shipped five
 sha_b=$(git -C "$root/shipped" rev-parse HEAD)
 audit
+expect "$shipped" PR '#5/merged-stale' "a commit after the merged head still read as merged"
 expect "$shipped" BUCKET review "a commit after the merged head was a cleanup candidate"
 stub gh 0 "[$(gh_row 5 MERGED "$sha_a"),$(gh_row 6 OPEN "$sha_b")]"
 audit
@@ -235,6 +250,7 @@ expect "$shipped" BUCKET safe "a GitLab merged request at HEAD was not safe"
 stub glab 0 "[$(glab_row 7 merged "$sha_a")]"
 git -C "$root" remote set-url origin https://ci:token@gitlab.example.com:8443/org/repo.git
 audit
+expect "$shipped" PR '#7/merged-stale' "a stale GitLab merged request still read as merged"
 expect "$shipped" BUCKET review "a stale GitLab merged request was a cleanup candidate"
 
 [ "$failed" -eq 0 ] || { printf '%s\n' "$failed worktree-audit checks failed" >&2; exit 1; }
