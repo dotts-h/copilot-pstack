@@ -83,12 +83,12 @@ export function parseArgs(
 ): CliOptions {
   const program = new Command("watch-pr")
     .description(
-      "Watch one pull request, a connected stack, or an immutable queued stack.\nJSON (NDJSON while polling) is the default; --pretty renders human text."
+      "Watch one pull request or GitLab merge request, a connected stack, or an immutable queued stack.\nJSON (NDJSON while polling) is the default; --pretty renders human text."
     )
     .configureOutput({ writeOut: io.stdout, writeErr: io.stderr })
     .exitOverride()
-    .option("--owner <owner>", "GitHub repository owner")
-    .option("--repo <repo>", "GitHub repository name")
+    .option("--owner <owner>", "repository owner or GitLab group path")
+    .option("--repo <repo>", "repository name")
     .option("--pr <number>", "pull request number", prNumber)
     .addOption(
       new Option("--stack", "watch the connected open stack")
