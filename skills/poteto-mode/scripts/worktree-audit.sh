@@ -118,6 +118,28 @@ transcripts_dir() {
 	printf '%s/.cursor/projects/%s/agent-transcripts\n' "$HOME" "$(printf '%s' "$path" | sed 's#^/##; s#/#-#g')"
 }
 
+chat_patterns() {
+	local base extra spell json
+	base=$(printf '%s' "$1" | tr '\\' '/')
+	extra=$base
+	case $base in
+	[A-Za-z]:*) extra=$(printf '%s' "${base:0:1}" | tr 'A-Za-z' 'a-zA-Z')${base:1} ;;
+	esac
+	for spell in "$base" "$extra"; do
+		json=$(printf '%s' "$spell" | sed 's#/#\\\\#g')
+		printf '%s\n' \
+			"$spell/" \
+			"$spell\"" \
+			"$spell'" \
+			"$spell\\\"" \
+			"$json\\\\" \
+			"$json\"" \
+			"$json'" \
+			"$json\\\""
+		[ "$spell" = "$extra" ] && break
+	done
+}
+
 newest_chat_ts() {
 	local needle dir ts
 	needle=$1
@@ -127,8 +149,7 @@ newest_chat_ts() {
 		[ -d "$dir" ] && set -- "$@" "$dir"
 	done
 	[ $# -gt 0 ] || { printf '%s\n' 0; return; }
-	if ts=$(rg --no-config --no-filename -N -F \
-		-e "$needle/" -e "$needle\"" -e "$needle'" -e "$needle\\\"" -- "$@" 2>/dev/null | awk '
+	if ts=$(chat_patterns "$needle" | rg --no-config --no-filename -N -F -f - -- "$@" 2>/dev/null | awk '
 		function epoch(t,   y, m, d, hh, mm, ss, era, yoe, doy, doe) {
 			y = substr(t, 1, 4) + 0
 			m = substr(t, 6, 2) + 0
@@ -163,7 +184,7 @@ newest_chat_ts() {
 			if (unknown) print "?"
 			else printf "%.0f\n", best
 		}'
-		exit $(( ${PIPESTATUS[0]} > 1 || ${PIPESTATUS[1]} != 0 ))) && [ -n "$ts" ]; then
+		exit $(( ${PIPESTATUS[1]} > 1 || ${PIPESTATUS[2]} != 0 ))) && [ -n "$ts" ]; then
 		printf '%s\n' "$ts"
 	else
 		printf '%s\n' '?'
